@@ -9,4 +9,7 @@ crate-type = ["cdylib"]
 path = "rust/lib.rs"
 
 [dependencies]
+arrow-pyarrow = "59"
+datafusion = { version = "55.2.0", default-features = false, features=["parquet", "compression"] }
 pyo3 = "0.29.3"
+pyo3-async-runtimes = { version = "0.29.0", features = ["attributes", "tokio-runtime"] }

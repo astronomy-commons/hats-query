@@ -1,11 +1,24 @@
-from hats_query import sum_as_string, async_read_parquet
 import asyncio
+
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+from hats_query import async_read_parquet, sum_as_string
+
 
 def test_sum_as_string() -> None:
     """Verify the output of the `sum_as_string` function"""
     assert sum_as_string(38, 4) == "42"
 
-def test_read_parquet() -> None:
-    results = asyncio.run(async_read_parquet("/home/delucchi/git/properties/hats/tests/data/small_sky/dataset/Norder=0/Dir=0/Npix=11.parquet"))
-    assert len(results) == 1
-    assert len(results[0]) == 131
+
+def test_read_parquet(tmp_path) -> None:
+    """Verify the output of the `read_parquet` function"""
+    test_path = tmp_path / "test.parquet"
+    pq.write_table(
+        pa.Table.from_pydict({"a": [1, 2, 3], "b": ["x", "y", "z"]}),
+        test_path,
+        row_group_size=2,
+    )
+    results = asyncio.run(async_read_parquet(str(test_path)))
+    assert len(results) == 2
+    assert (len(results[0]), len(results[1])) == (2, 1)

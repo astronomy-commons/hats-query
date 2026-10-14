@@ -14,6 +14,10 @@ updates:
       interval: "monthly"
     groups:
       # Crates which must be updated together
-      pyo3:
+      datafusion-and-friends:
         patterns:
+          - "datafusion"
+          - "arrow"
+          - "arrow-*"
           - "pyo3"
+          - "pyo3-*"

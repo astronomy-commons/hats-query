@@ -5,7 +5,6 @@ use datafusion::{
     common::arrow::array::RecordBatch, datasource::file_format::options::ParquetReadOptions,
     execution::context::SessionContext,
 };
-use std::{fs::File, path::Path};
 
 /// Reads parquet and returns arrow table.
 #[pyfunction]

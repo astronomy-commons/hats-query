@@ -8,3 +8,12 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    groups:
+      # Crates which must be updated together
+      pyo3:
+        patterns:
+          - "pyo3"

@@ -9,7 +9,10 @@ crate-type = ["cdylib"]
 path = "rust/lib.rs"
 
 [dependencies]
+# Must match the arrow version used by datafusion
 arrow-pyarrow = "59"
-datafusion = { version = "55.2.0", default-features = false, features=["parquet", "compression"] }
-pyo3 = "0.29.3"
-pyo3-async-runtimes = { version = "0.29.0", features = ["attributes", "tokio-runtime"] }
+datafusion = { version = "55", default-features = false, features=["compression", "parquet"] }
+# Crate version must match to the version used by arrow-pyarrow. ABI3 version should match the minimum supported Python version.
+pyo3 = { version = "0.29", features = ["abi3-py311"] }
+# Must match pyo3 version
+pyo3-async-runtimes = { version = "0.29", features = ["attributes", "tokio-runtime"] }

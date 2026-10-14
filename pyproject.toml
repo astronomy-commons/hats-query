@@ -31,6 +31,7 @@ dev = [
     "jupyter", # Clears output from Jupyter notebooks
     "pre-commit", # Used to run checks before finalizing a git commit
     "pytest",
+    "pytest-asyncio", # Runs async tests
     "pytest-cov", # Used to report total code coverage
     "ruff", # Used for static linting of files
 ]
@@ -64,6 +65,7 @@ testpaths = [
     "docs",
 ]
 addopts = "--doctest-modules --doctest-glob=*.rst"
+asyncio_mode = "auto"
 log_cli_level = "INFO"
 
 [tool.ruff]

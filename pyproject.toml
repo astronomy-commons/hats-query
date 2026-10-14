@@ -48,6 +48,11 @@ build-backend = "setuptools.build_meta"
 
 [[tool.setuptools-rust.ext-modules]]
 target = "hats_query._extension"
+py-limited-api = true
+
+# Must match pyo3's "abi3-pyXY" feature in Cargo.toml
+[tool.distutils.bdist_wheel]
+py-limited-api = "cp311"
 
 [tool.setuptools_scm]
 write_to = "src/hats_query/_version.py"

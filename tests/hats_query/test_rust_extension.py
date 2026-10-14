@@ -2,6 +2,7 @@ import asyncio
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pytest
 
 from hats_query import async_read_parquet, sum_as_string
 
@@ -22,3 +23,9 @@ def test_read_parquet(tmp_path) -> None:
     results = asyncio.run(async_read_parquet(str(test_path)))
     assert len(results) == 2
     assert (len(results[0]), len(results[1])) == (2, 1)
+
+
+def test_read_parquet_missing_file(tmp_path) -> None:
+    """Verify that reading a non-existing file raises a Python exception"""
+    with pytest.raises(ValueError, match="No files found"):
+        asyncio.run(async_read_parquet(str(tmp_path / "missing.parquet")))

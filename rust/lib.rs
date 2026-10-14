@@ -1,3 +1,4 @@
+mod exceptions;
 mod parquet;
 mod sums;
 

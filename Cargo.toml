@@ -1,0 +1,12 @@
+[package]
+name = "hats-query"
+version = "0.0.0"
+edition = "2024"
+
+[lib]
+name = "_extension"
+crate-type = ["cdylib"]
+path = "rust/lib.rs"
+
+[dependencies]
+pyo3 = "0.29.3"

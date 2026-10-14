@@ -16,6 +16,10 @@ on:
 
 permissions: {}
 
+env:
+  # Build the Rust extension in debug mode
+  SETUPTOOLS_RUST_CARGO_PROFILE: dev
+
 jobs:
   build:
 
@@ -34,6 +38,13 @@ jobs:
       uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
       with:
         python-version: ${{ matrix.python-version }}
+    - name: Set up Rust toolchain
+      uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+      with:
+        components: clippy
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      with:
+        shared-key: "${{ runner.os }}_debug"
     - name: Install uv
       uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884
     - name: Install dependencies
@@ -41,6 +52,12 @@ jobs:
         sudo apt-get update
         uv pip install --system -e .[dev]
         if [ -f requirements.txt ]; then uv pip install --system -r requirements.txt; fi
+    - name: Run cargo clippy
+      run: |
+        cargo clippy --all-targets -- -D warnings
+    - name: Run cargo test
+      run: |
+        cargo test
     - name: List dependencies
       run: |
         pip list

@@ -39,9 +39,13 @@ hats_query_version = "hats_query_cli.hats_query_version:main"
 [build-system]
 requires = [
     "setuptools>=62", # Used to build and package the Python project
+    "setuptools-rust>=1.0", # Used to build Rust extensions
     "setuptools_scm>=6.2", # Gets release version from git. Makes it available programmatically
 ]
 build-backend = "setuptools.build_meta"
+
+[[tool.setuptools-rust.ext-modules]]
+target = "hats_query._extension"
 
 [tool.setuptools_scm]
 write_to = "src/hats_query/_version.py"

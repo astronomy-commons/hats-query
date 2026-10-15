@@ -35,9 +35,6 @@ dev = [
     "pytest-cov", # Used to report total code coverage
     "ruff", # Used for static linting of files
 ]
-# Command-line scripts that can be run after installing the package
-[project.scripts]
-hats_query_version = "hats_query_cli.hats_query_version:main"
 
 [build-system]
 requires = [

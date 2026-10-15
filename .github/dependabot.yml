@@ -19,5 +19,6 @@ updates:
           - "datafusion"
           - "arrow"
           - "arrow-*"
+          - "futures-core"
           - "pyo3"
           - "pyo3-*"

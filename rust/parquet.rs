@@ -37,19 +37,44 @@ pub(crate) fn read_parquet(py: Python, path_in: String) -> PyResult<Bound<PyAny>
     })
 }
 
-type SyncableRecordBatchStream = Arc<OnceCell<Mutex<SendableRecordBatchStream>>>;
+type SyncableRecordBatchStream = Mutex<SendableRecordBatchStream>;
 
 #[pyclass]
-pub(crate) struct ParquetReader {
-    path: Arc<PathBuf>,
-    unordered_stream: SyncableRecordBatchStream,
+pub(crate) struct ParquetReader(Arc<InnerParquetReader>);
+
+struct InnerParquetReader {
+    args: ParquetReaderArgs,
+    unordered_stream: OnceCell<SyncableRecordBatchStream>,
 }
 
-impl ParquetReader {
-    async fn execute_stream_partitioned(path: Arc<PathBuf>) -> PyResult<SendableRecordBatchStream> {
+struct ParquetReaderArgs {
+    path: PathBuf,
+    // TODO: remove me
+    #[allow(dead_code)]
+    sql: Option<String>,
+}
+
+impl InnerParquetReader {
+    fn new(path: PathBuf, sql: Option<String>) -> Self {
+        Self {
+            args: ParquetReaderArgs { path, sql },
+            unordered_stream: OnceCell::new(),
+        }
+    }
+
+    async fn get_or_try_init_stream(&self) -> PyResult<&SyncableRecordBatchStream> {
+        self.unordered_stream
+            .get_or_try_init(|| async {
+                let stream = Self::initialize_stream(&self.args).await?;
+                Ok::<_, PyErr>(Mutex::new(stream))
+            })
+            .await
+    }
+
+    async fn initialize_stream(args: &ParquetReaderArgs) -> PyResult<SendableRecordBatchStream> {
         let ctx = SessionContext::new();
 
-        let string_path = path.to_str().ok_or_else(|| {
+        let string_path = args.path.to_str().ok_or_else(|| {
             pyo3::exceptions::PyValueError::new_err("Invalid path: cannot convert to string")
         })?;
 
@@ -80,28 +105,21 @@ impl ParquetReader {
 #[pymethods]
 impl ParquetReader {
     #[new]
-    fn new(path: PathBuf) -> PyResult<Self> {
-        Ok(Self {
-            path: Arc::new(path),
-            unordered_stream: Arc::new(OnceCell::new()),
-        })
+    #[pyo3(signature = (path: "pathlib.Path | str", *, sql: "str | None" = None))]
+    fn new(path: PathBuf, sql: Option<String>) -> Self {
+        let inner = InnerParquetReader::new(path, sql);
+        Self(Arc::new(inner))
     }
 
     fn __aiter__(slf: PyRef<Self>) -> PyRef<Self> {
         slf
     }
 
-    fn __anext__<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let stream = Arc::clone(&self.unordered_stream);
-        let path = Arc::clone(&self.path);
+    fn __anext__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let inner = Arc::clone(&self.0);
 
         future_into_py(py, async move {
-            let stream = stream
-                .get_or_try_init(|| async {
-                    let stream = Self::execute_stream_partitioned(path).await?;
-                    Ok::<_, PyErr>(Mutex::new(stream))
-                })
-                .await?;
+            let stream = inner.get_or_try_init_stream().await?;
             match stream.lock().await.next().await {
                 Some(batch) => Ok(PyArrowType(
                     batch.map_err(datafusion_error_to_py_exception)?,

@@ -35,15 +35,23 @@ async def test_parquet_reader(tmp_path) -> None:
     """Verify `ParquetReader` async iterator"""
     test_path = tmp_path / "test.parquet"
     pq.write_table(
-        pa.Table.from_pydict({"a": [1, 2, 3], "b": ["x", "y", "z"]}),
+        pa.Table.from_pydict({"a": list(range(99)), "b": ["x", "y", "z"] * 33}),
         test_path,
-        row_group_size=2,
+        row_group_size=50,
     )
-    reader = ParquetReader(test_path)
+
+    reader = ParquetReader(
+        test_path,
+        sql="SELECT * FROM t WHERE a % 2 = 0 and b IN ('x', 'y')",
+        table_name="t",
+    )
 
     i = 0
+    length = 0
     async for batch in reader:
         i += 1
         assert isinstance(batch, pa.RecordBatch)
+        length += batch.num_rows
     # Could be larger than number of row groups because of parallel parsing by DataFusion
     assert i >= 2
+    assert length == 33

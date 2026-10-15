@@ -39,6 +39,16 @@ pub(crate) fn read_parquet(py: Python, path_in: String) -> PyResult<Bound<PyAny>
 
 type SyncableRecordBatchStream = Mutex<SendableRecordBatchStream>;
 
+/// Async iterator over a parquet file, yielding arrow record batches.
+///
+/// Parameters
+/// ----------
+/// path : pathlib.Path | str
+///     The path to the parquet file.
+/// sql : str | None, optional
+///     The SQL query to execute, must be provided if table_name is provided.
+/// table_name : str | None, optional
+///     The name of the table to query, must be provided if sql is provided.
 #[pyclass]
 pub(crate) struct ParquetReader(Arc<InnerParquetReader>);
 
@@ -49,15 +59,18 @@ struct InnerParquetReader {
 
 struct ParquetReaderArgs {
     path: PathBuf,
-    // TODO: remove me
-    #[allow(dead_code)]
-    sql: Option<String>,
+    query: Option<QueryArgs>,
+}
+
+struct QueryArgs {
+    sql: String,
+    table_name: String,
 }
 
 impl InnerParquetReader {
-    fn new(path: PathBuf, sql: Option<String>) -> Self {
+    fn new(path: PathBuf, query: Option<QueryArgs>) -> Self {
         Self {
-            args: ParquetReaderArgs { path, sql },
+            args: ParquetReaderArgs { path, query },
             unordered_stream: OnceCell::new(),
         }
     }
@@ -77,10 +90,20 @@ impl InnerParquetReader {
         let string_path = args.path.to_str().ok_or_else(|| {
             pyo3::exceptions::PyValueError::new_err("Invalid path: cannot convert to string")
         })?;
+        let sql = match &args.query {
+            Some(query) => query.sql.as_str(),
+            None => "SELECT * FROM t",
+        };
+        let table_name = match &args.query {
+            Some(query) => query.table_name.as_str(),
+            None => "t",
+        };
 
-        // create the dataframe
+        ctx.register_parquet(table_name, string_path, ParquetReadOptions::new())
+            .await
+            .map_err(datafusion_error_to_py_exception)?;
         let df = ctx
-            .read_parquet(string_path, ParquetReadOptions::new())
+            .sql(sql)
             .await
             .map_err(datafusion_error_to_py_exception)?;
 
@@ -105,10 +128,19 @@ impl InnerParquetReader {
 #[pymethods]
 impl ParquetReader {
     #[new]
-    #[pyo3(signature = (path: "pathlib.Path | str", *, sql: "str | None" = None))]
-    fn new(path: PathBuf, sql: Option<String>) -> Self {
-        let inner = InnerParquetReader::new(path, sql);
-        Self(Arc::new(inner))
+    #[pyo3(signature = (path: "pathlib.Path | str", *, sql: "str | None" = None, table_name: "str | None" = None))]
+    fn new(path: PathBuf, sql: Option<String>, table_name: Option<String>) -> PyResult<Self> {
+        let query = match (sql, table_name) {
+            (Some(sql), Some(table_name)) => Some(QueryArgs { sql, table_name }),
+            (None, None) => None,
+            _ => {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "Both sql and table_name must be provided together or neither.",
+                ));
+            }
+        };
+        let inner = InnerParquetReader::new(path, query);
+        Ok(Self(Arc::new(inner)))
     }
 
     fn __aiter__(slf: PyRef<Self>) -> PyRef<Self> {

@@ -1421,8 +1421,10 @@ version = "0.0.0"
 dependencies = [
  "arrow-pyarrow",
  "datafusion",
+ "futures-util",
  "pyo3",
  "pyo3-async-runtimes",
+ "tokio",
 ]
 
 [[package]]

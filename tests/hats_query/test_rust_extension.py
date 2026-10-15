@@ -2,7 +2,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
-from hats_query import read_parquet, sum_as_string
+from hats_query import ParquetReader, read_parquet, sum_as_string
 
 
 def test_sum_as_string() -> None:
@@ -29,3 +29,21 @@ async def test_read_parquet_missing_file(tmp_path) -> None:
     """Verify that reading a non-existing file raises a Python exception"""
     with pytest.raises(ValueError, match="No files found"):
         await read_parquet(str(tmp_path / "missing.parquet"))
+
+
+async def test_parquet_reader(tmp_path) -> None:
+    """Verify `ParquetReader` async iterator"""
+    test_path = tmp_path / "test.parquet"
+    pq.write_table(
+        pa.Table.from_pydict({"a": [1, 2, 3], "b": ["x", "y", "z"]}),
+        test_path,
+        row_group_size=2,
+    )
+    reader = ParquetReader(test_path)
+
+    i = 0
+    async for batch in reader:
+        i += 1
+        assert isinstance(batch, pa.RecordBatch)
+    # Could be larger than number of row groups because of parallel parsing by DataFusion
+    assert i >= 2

@@ -1,9 +1,4 @@
-
-.. hats_query documentation main file.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
-
-Welcome to hats_query's documentation!
+HATS Query
 ========================================================================================
 
 Server for querying HATS catalogs through VO and HTTP.

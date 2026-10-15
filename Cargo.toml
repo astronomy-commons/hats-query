@@ -10,7 +10,7 @@ path = "rust/lib.rs"
 
 [dependencies]
 # Must match the arrow version used by datafusion
-arrow-pyarrow = "59"
+arrow-pyarrow = "60"
 datafusion = { version = "55", default-features = false, features=["compression", "parquet"] }
 # Crate version must match to the version used by arrow-pyarrow. ABI3 version should match the minimum supported Python
 # version and must be kept in sync with [tool.distutils.bdist_wheel] py-limited-api in pyproject.toml.

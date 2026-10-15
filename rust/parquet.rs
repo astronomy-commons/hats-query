@@ -8,10 +8,10 @@ use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
 use futures_util::StreamExt as _;
 use futures_util::stream;
 use pyo3::prelude::*;
-use pyo3_async_runtimes::tokio::{future_into_py, get_runtime};
+use pyo3_async_runtimes::tokio::future_into_py;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, OnceCell};
 
 /// Reads parquet and returns arrow table.
 #[pyfunction]
@@ -37,15 +37,16 @@ pub(crate) fn read_parquet(py: Python, path_in: String) -> PyResult<Bound<PyAny>
     })
 }
 
-type SyncableRecordBatchStream = Arc<Mutex<SendableRecordBatchStream>>;
+type SyncableRecordBatchStream = Arc<OnceCell<Mutex<SendableRecordBatchStream>>>;
 
 #[pyclass]
 pub(crate) struct ParquetReader {
+    path: Arc<PathBuf>,
     unordered_stream: SyncableRecordBatchStream,
 }
 
 impl ParquetReader {
-    async fn execute_stream_partitioned(path: PathBuf) -> PyResult<Self> {
+    async fn execute_stream_partitioned(path: Arc<PathBuf>) -> PyResult<SendableRecordBatchStream> {
         let ctx = SessionContext::new();
 
         let string_path = path.to_str().ok_or_else(|| {
@@ -72,19 +73,18 @@ impl ParquetReader {
             schema,
             flatten_unordered_stream,
         ));
-        let unordered_stream = Arc::new(Mutex::new(unordered_stream));
-
-        Ok(Self { unordered_stream })
+        Ok(unordered_stream)
     }
 }
 
 #[pymethods]
 impl ParquetReader {
-    // TODO: Consider to initialize lazily, when the first iteration is being called
     #[new]
     fn new(path: PathBuf) -> PyResult<Self> {
-        let runtime = get_runtime();
-        runtime.block_on(async { Self::execute_stream_partitioned(path).await })
+        Ok(Self {
+            path: Arc::new(path),
+            unordered_stream: Arc::new(OnceCell::new()),
+        })
     }
 
     fn __aiter__(slf: PyRef<Self>) -> PyRef<Self> {
@@ -93,8 +93,15 @@ impl ParquetReader {
 
     fn __anext__<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let stream = Arc::clone(&self.unordered_stream);
+        let path = Arc::clone(&self.path);
 
         future_into_py(py, async move {
+            let stream = stream
+                .get_or_try_init(|| async {
+                    let stream = Self::execute_stream_partitioned(path).await?;
+                    Ok::<_, PyErr>(Mutex::new(stream))
+                })
+                .await?;
             match stream.lock().await.next().await {
                 Some(batch) => Ok(PyArrowType(
                     batch.map_err(datafusion_error_to_py_exception)?,

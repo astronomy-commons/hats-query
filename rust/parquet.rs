@@ -4,9 +4,11 @@ use datafusion::common::arrow::array::RecordBatch;
 use datafusion::datasource::file_format::options::ParquetReadOptions;
 use datafusion::execution::SendableRecordBatchStream;
 use datafusion::execution::context::SessionContext;
+use datafusion::physical_plan::common::spawn_buffered;
 use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
+use datafusion::prelude::SessionConfig;
 use futures_util::StreamExt as _;
-use futures_util::stream;
+use futures_util::future;
 use pyo3::prelude::*;
 use pyo3_async_runtimes::tokio::future_into_py;
 use std::path::PathBuf;
@@ -39,6 +41,12 @@ pub(crate) fn read_parquet(py: Python, path_in: String) -> PyResult<Bound<PyAny>
 
 type SyncableRecordBatchStream = Mutex<SendableRecordBatchStream>;
 
+/// Number of partitions executed concurrently ahead of the consumer.
+const PARTITION_WINDOW: usize = 8;
+
+/// Number of record batches each running partition may buffer ahead of the consumer.
+const PARTITION_BUFFER: usize = 2;
+
 /// Async iterator over a parquet file, yielding arrow record batches.
 ///
 /// Parameters
@@ -54,7 +62,7 @@ pub(crate) struct ParquetReader(Arc<InnerParquetReader>);
 
 struct InnerParquetReader {
     args: ParquetReaderArgs,
-    unordered_stream: OnceCell<SyncableRecordBatchStream>,
+    stream: OnceCell<SyncableRecordBatchStream>,
 }
 
 struct ParquetReaderArgs {
@@ -71,12 +79,12 @@ impl InnerParquetReader {
     fn new(path: PathBuf, query: Option<QueryArgs>) -> Self {
         Self {
             args: ParquetReaderArgs { path, query },
-            unordered_stream: OnceCell::new(),
+            stream: OnceCell::new(),
         }
     }
 
     async fn get_or_try_init_stream(&self) -> PyResult<&SyncableRecordBatchStream> {
-        self.unordered_stream
+        self.stream
             .get_or_try_init(|| async {
                 let stream = Self::initialize_stream(&self.args).await?;
                 Ok::<_, PyErr>(Mutex::new(stream))
@@ -85,7 +93,14 @@ impl InnerParquetReader {
     }
 
     async fn initialize_stream(args: &ParquetReaderArgs) -> PyResult<SendableRecordBatchStream> {
-        let ctx = SessionContext::new();
+        // Disable work stealing, so each partition reads only its own contiguous file ranges
+        // and concatenating partitions in order preserves the file order.
+        let mut config = SessionConfig::new();
+        config
+            .options_mut()
+            .execution
+            .enable_file_stream_work_stealing = false;
+        let ctx = SessionContext::new_with_config(config);
 
         let string_path = args.path.to_str().ok_or_else(|| {
             pyo3::exceptions::PyValueError::new_err("Invalid path: cannot convert to string")
@@ -115,13 +130,17 @@ impl InnerParquetReader {
             .await
             .map_err(datafusion_error_to_py_exception)?;
 
-        // select_all doesn't preserve the order but may work faster
-        let flatten_unordered_stream = stream::select_all(partition_streams);
-        let unordered_stream: SendableRecordBatchStream = Box::pin(RecordBatchStreamAdapter::new(
+        // Process PARTITION_BUFFER partitions in parallel and pre-fetch up to PARTITION_WINDOW
+        // partitions ahead of the consumer.
+        let flatten_ordered_stream = futures_util::stream::iter(partition_streams)
+            .map(|s| future::ready(spawn_buffered(s, PARTITION_BUFFER)))
+            .buffered(PARTITION_WINDOW)
+            .flatten();
+        let ordered_stream: SendableRecordBatchStream = Box::pin(RecordBatchStreamAdapter::new(
             schema,
-            flatten_unordered_stream,
+            flatten_ordered_stream,
         ));
-        Ok(unordered_stream)
+        Ok(ordered_stream)
     }
 }
 

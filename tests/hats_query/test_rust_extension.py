@@ -33,9 +33,12 @@ async def test_read_parquet_missing_file(tmp_path) -> None:
 
 async def test_parquet_reader(tmp_path) -> None:
     """Verify `ParquetReader` async iterator"""
+    a = list(range(99))
+    b = ["x", "y", "z"] * 33
+
     test_path = tmp_path / "test.parquet"
     pq.write_table(
-        pa.Table.from_pydict({"a": list(range(99)), "b": ["x", "y", "z"] * 33}),
+        pa.Table.from_pydict({"a": a, "b": b}),
         test_path,
         row_group_size=50,
     )
@@ -47,11 +50,11 @@ async def test_parquet_reader(tmp_path) -> None:
     )
 
     i = 0
-    length = 0
+    output_a = []
     async for batch in reader:
         i += 1
         assert isinstance(batch, pa.RecordBatch)
-        length += batch.num_rows
+        output_a.extend(batch["a"].to_pylist())
     # Could be larger than number of row groups because of parallel parsing by DataFusion
     assert i >= 2
-    assert length == 33
+    assert output_a == [a_ for a_ in a if a_ % 2 == 0 and b[a_] in ("x", "y")]

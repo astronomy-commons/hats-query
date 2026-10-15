@@ -17,11 +17,12 @@ mypy_type_checking: none
 package_name: hats_query
 project_description: Server for querying HATS catalogs through VO and HTTP.
 project_license: MIT
-project_name: hats_query
+project_name: hats-query
 project_organization: astronomy-commons
 python_versions:
 - '3.11'
 - '3.12'
 - '3.13'
 - '3.14'
+- '3.15'
 test_lowest_version: none

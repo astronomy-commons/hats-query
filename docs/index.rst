@@ -1,9 +1,4 @@
-
-.. hats_query documentation main file.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
-
-Welcome to hats_query's documentation!
+HATS Query
 ========================================================================================
 
 Server for querying HATS catalogs through VO and HTTP.
@@ -18,7 +13,7 @@ create and activate a new environment.
 
 .. code-block:: console
 
-   >> conda create env -n <env_name> python=3.12
+   >> conda create env -n <env_name> python=3.13
    >> conda activate <env_name>
 
 

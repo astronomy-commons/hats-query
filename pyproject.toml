@@ -1,5 +1,5 @@
 [project]
-name = "hats_query"
+name = "hats-query"
 license = "MIT"
 license-files = ["LICENSE"]
 readme = "README.md"
@@ -23,7 +23,7 @@ dependencies = [
 ]
 
 [project.urls]
-"Source Code" = "https://github.com/astronomy-commons/hats_query"
+"Source Code" = "https://github.com/astronomy-commons/hats-query"
 
 # On a mac, install optional dependencies with `pip install '.[dev]'` (include the single quotes)
 [project.optional-dependencies]

@@ -1,4 +1,4 @@
-# hats_query Development Guide
+# hats-query Development Guide
 
 This document provides a guide for contributing to the development of this project, and can include information such as design principles, core abstractions, API conventions, development workflow, and best-practices.
 

@@ -1,13 +1,13 @@
 
-# hats_query
+# HATS Query
 
 Server for querying HATS catalogs through VO and HTTP.
 
 [![Template](https://img.shields.io/badge/Template-LINCC%20Frameworks%20Python%20Project%20Template-brightgreen)](https://lincc-ppt.readthedocs.io/en/latest/)
 
-[![PyPI](https://img.shields.io/pypi/v/hats_query?color=blue&logo=pypi&logoColor=white)](https://pypi.org/project/hats_query/)
-[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/astronomy-commons/hats_query/smoke-test.yml)](https://github.com/astronomy-commons/hats_query/actions/workflows/smoke-test.yml)
-[![Codecov](https://codecov.io/gh/astronomy-commons/hats_query/branch/main/graph/badge.svg)](https://codecov.io/gh/astronomy-commons/hats_query)
+[![PyPI](https://img.shields.io/pypi/v/hats-query?color=blue&logo=pypi&logoColor=white)](https://pypi.org/project/hats-query/)
+[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/astronomy-commons/hats-query/smoke-test.yml)](https://github.com/astronomy-commons/hats-query/actions/workflows/smoke-test.yml)
+[![Codecov](https://codecov.io/gh/astronomy-commons/hats-query/branch/main/graph/badge.svg)](https://codecov.io/gh/astronomy-commons/hats-query)
 [![Read The Docs](https://img.shields.io/readthedocs/hats-query)](https://hats-query.readthedocs.io/)
 
 This project was automatically generated using the LINCC-Frameworks 

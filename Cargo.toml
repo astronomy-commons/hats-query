@@ -11,7 +11,7 @@ path = "rust/lib.rs"
 [dependencies]
 # Must match the "arrow" version used by datafusion
 arrow-pyarrow = "59"
-datafusion = { version = "55", default-features = false, features=["compression", "parquet"] }
+datafusion = { version = "55", default-features = false, features=["compression", "parquet", "sql"] }
 # Must match the "futures" version used by datafusion
 futures-util = "0.3"
 # Crate version must match to the version used by arrow-pyarrow. ABI3 version should match the minimum supported Python

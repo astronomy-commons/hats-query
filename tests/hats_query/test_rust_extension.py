@@ -10,7 +10,6 @@ def test_sum_as_string() -> None:
     assert sum_as_string(38, 4) == "42"
 
 
-@pytest.mark.asyncio
 async def test_read_parquet(tmp_path) -> None:
     """Verify the output of the `read_parquet` function"""
     test_path = tmp_path / "test.parquet"
@@ -24,7 +23,6 @@ async def test_read_parquet(tmp_path) -> None:
     assert (len(results[0]), len(results[1])) == (2, 1)
 
 
-@pytest.mark.asyncio
 async def test_read_parquet_missing_file(tmp_path) -> None:
     """Verify that reading a non-existing file raises a Python exception"""
     with pytest.raises(ValueError, match="No files found"):

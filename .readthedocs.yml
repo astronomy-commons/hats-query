@@ -11,6 +11,10 @@ build:
   tools:
     python: "3.13"
     rust: "latest"
+  jobs:
+    # Build the Rust extension in debug mode
+    post_install:
+      - SETUPTOOLS_RUST_CARGO_PROFILE=dev python -m pip install .
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:
@@ -21,5 +25,3 @@ python:
    install:
    - requirements: docs/requirements.txt
    - requirements: requirements.txt
-   - method: pip
-     path: .

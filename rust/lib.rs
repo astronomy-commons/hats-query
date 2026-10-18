@@ -1,11 +1,12 @@
+mod adql;
 mod exceptions;
 mod parquet;
 mod sums;
 
 use crate::parquet::ParquetReader;
-use parquet::read_parquet;
+use crate::parquet::read_parquet;
+use crate::sums::sum_as_string;
 use pyo3::prelude::*;
-use sums::sum_as_string;
 
 #[pymodule(gil_used = false)]
 fn _extension(m: &Bound<PyModule>) -> PyResult<()> {

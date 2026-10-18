@@ -20,3 +20,10 @@ pyo3 = { version = "0.29", features = ["abi3-py311"] }
 # Must match pyo3 version
 pyo3-async-runtimes = { version = "0.29", features = ["attributes", "tokio-runtime"] }
 tokio = { version = "1", default-features = false }
+
+[lints.rust]
+redundant_imports = "warn"
+
+[dev-dependencies]
+approx = { version = "0.5", default-features = false }
+tokio = { version = "1", default-features = false, features = ["macros"] }

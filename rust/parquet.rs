@@ -1,4 +1,4 @@
-use crate::adql::register_adql;
+use crate::adql::{AdqlContext as _, register_adql};
 use crate::exceptions::datafusion_error_to_py_exception;
 use arrow_pyarrow::PyArrowType;
 use datafusion::common::arrow::array::RecordBatch;
@@ -118,7 +118,7 @@ impl InnerParquetReader {
             .await
             .map_err(datafusion_error_to_py_exception)?;
         let df = ctx
-            .sql(sql)
+            .adql(sql)
             .await
             .map_err(datafusion_error_to_py_exception)?;
 

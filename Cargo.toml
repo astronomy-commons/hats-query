@@ -26,4 +26,5 @@ redundant_imports = "warn"
 
 [dev-dependencies]
 approx = { version = "0.5", default-features = false }
+roxmltree = { version = "0.21", default-features = false }
 tokio = { version = "1", default-features = false, features = ["macros"] }

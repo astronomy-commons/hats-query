@@ -31,20 +31,28 @@ create and activate a new environment.
 >> conda activate <env_name>
 ```
 
+ADQL tests use the IVOA [lyonetia](https://github.com/ivoa/lyonetia) query collection
+(its `src/adql/ivoa/` directory), which is a git submodule at `tests/data/lyonetia`.
+Either clone with `git clone --recurse-submodules`, or let `./.setup_dev.sh` fetch it
+for you (it runs `git submodule update --init`).
+
 Once you have created a new environment, you can install this project for local
 development using the following commands:
 
 ```
+>> curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 >> ./.setup_dev.sh
 >> conda install pandoc
 ```
 
 Notes:
-1. `./.setup_dev.sh` will initialize pre-commit for this local repository, so
+1. The package includes a Rust extension, so a Rust toolchain is required to build it.
+   The first command installs it with [rustup](https://rustup.rs).
+2. `./.setup_dev.sh` will initialize pre-commit for this local repository, so
    that a set of tests will be run prior to completing a local commit. For more
    information, see the Python Project Template documentation on 
    [pre-commit](https://lincc-ppt.readthedocs.io/en/latest/practices/precommit.html)
-2. Install `pandoc` allows you to verify that automatic rendering of Jupyter notebooks
+3. Install `pandoc` allows you to verify that automatic rendering of Jupyter notebooks
    into documentation for ReadTheDocs works as expected. For more information, see
    the Python Project Template documentation on
    [Sphinx and Python Notebooks](https://lincc-ppt.readthedocs.io/en/latest/practices/sphinx.html#python-notebooks)

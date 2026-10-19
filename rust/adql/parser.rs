@@ -3,13 +3,15 @@
 //! [`AdqlDialect`] is an sqlparser dialect used with DataFusion's SQL parser. It is a minimal
 //! implementation for now: besides identifiers, it relies on sqlparser defaults, so it still
 //! accepts non-ADQL syntax (e.g. `LIMIT`), reserves non-ADQL keywords, and doesn't support
-//! some ADQL syntax (e.g. `TOP` is parsed, but not planned by DataFusion).
+//! some ADQL syntax.
 
+use crate::adql::top::TopToLimit;
 use datafusion::common::{Result as DFResult, not_impl_err, plan_err};
 use datafusion::execution::SessionState;
 use datafusion::logical_expr::LogicalPlan;
 use datafusion::prelude::*;
 use datafusion::sql::parser::{DFParserBuilder, Statement};
+use datafusion::sql::sqlparser::ast::VisitMut;
 use datafusion::sql::sqlparser::dialect::Dialect;
 
 /// sqlparser dialect for ADQL 2.1
@@ -44,10 +46,16 @@ fn parse_adql(state: &SessionState, query: &str) -> DFResult<Statement> {
     if statements.len() > 1 {
         return not_impl_err!("Only a single ADQL query is supported");
     }
-    match statements.pop_front() {
-        Some(statement) => Ok(statement),
-        None => plan_err!("No ADQL query was provided"),
+    let mut statement = match statements.pop_front() {
+        Some(statement) => statement,
+        None => return plan_err!("No ADQL query was provided"),
+    };
+    if let Statement::Statement(sql_statement) = &mut statement
+        && sql_statement.visit(&mut TopToLimit).is_break()
+    {
+        return plan_err!("Invalid ADQL TOP clause");
     }
+    Ok(statement)
 }
 
 async fn adql_query_to_plan(
@@ -120,29 +128,7 @@ mod tests {
         /// Lyonetia queries known to fail the planning test, please update when the planner is fixed
         /// to pass them
         const KNOWN_TO_FAIL_PLANNING: &[&str] = &[
-            "select\t\tdistinct top\n\n\n    10 x, y from foo",
             "select top 3 * from x \n\t\tunion (\n\t\tselect top 40 a from y \n\t\t\texcept select * from z\n\t\t)",
-            "select * from (\n\t\tselect TOP 30 * from x\n\t\t) as q \n\t\tunion\n\t\tselect TOP 4 * from u",
-            "select top 4* from (select * from amanda.nucand)x",
-            "SELECT TOP 10 name, ra, dec\n      FROM stars",
-            "SELECT TOP 0 name, ra, dec\n      FROM stars",
-            "SELECT TOP 1\n        abs(-3.14)                               AS \"ABS\",\n        truncate(ceiling(313.6)/100, 2)          AS \"CEILING\",\n        truncate(degrees(0.054803338512622), 2)  AS \"DEGREES\",\n        truncate(exp(1.1442227999201620), 2)     AS \"EXP\",\n        truncate(floor(314.3)/100, 2)            AS \"FLOOR\",\n        truncate(log(23.103866858722183), 2)     AS \"LOG\",\n        truncate(log10(1380.3842646028848), 2)   AS \"LOG10\",\n        mod(7.14, 4)                             AS \"MOD\",\n        truncate(pi(), 2)                        AS \"PI\",\n        round(power(1.772004514666935, 2), 2)    AS \"POW\",\n        round(radians(179.908747671078)*100)/100 AS \"RADIANS\",\n        truncate(sqrt(9.8596000000000000), 2)    AS \"SQRT\",\n        round(3.14278210, 2)                     AS \"ROUND\",\n        truncate(3.1499999999, 2)                AS \"TRUNCATE\"\n      FROM stars",
-            "SELECT TOP 1\n        acos(1)            AS \"ACOS\",\n        asin(0)            AS \"ASIN\",\n        atan(0)            AS \"ATAN\",\n        atan2(0,1)         AS \"ATAN2\",\n        round(cos(pi()/2)) AS \"COS\",\n        sin(0)             AS \"SIN\",\n        tan(0)             AS \"TAN\"\n      FROM stars",
-            "select TOP 10 * FROM spatial\n\tWHERE 1=CONTAINS(POINT('ICRS', ra1, ra2),\n\t\tCIRCLE('ICRS', 10, 10, 0.5))",
-            "select TOP 10 * FROM spatial\nWHERE 1=INTERSECTS(CIRCLE('ICRS', 10, 10, 0.5),\n\t\tPOINT('ICRS', ra1, ra2))",
-            "-- take the 10 first\n  ( SELECT TOP 10 id, ra, dec FROM atable ORDER BY id ASC)\nUNION\n  -- take the 10 last\n  ( SELECT TOP 10 id, ra, dec FROM atable ORDER BY id DESC)",
-            "WITH tenFirst AS ( SELECT TOP 10 id, ra, dec FROM atable ORDER BY id ASC),\n      tenLast AS ( SELECT TOP 10 id, ra, dec FROM atable ORDER BY id DESC)\n  SELECT * FROM tenFirst\nUNION\n  SELECT * FROM tenLast",
-            "-- Use case name: 'obs wavelength_coverage 1'\n\nSELECT TOP 200 target_name, instrument_name, dataproduct_type,\n   em_min, em_max, em_res_power, obs_collection, dataproduct_subtype \nFROM ivoa.ObsCore \nWHERE em_min <= 2.18E-6 \n  AND em_max >= 2.18E-6 \n  AND s_dec < -74.5\n-- and em_res_power < 10 -- to exclude narrow-band filters like the Hawki-BrGamma\nORDER BY s_dec\n-- \n-- Find products containing the 2.18 micron wavelength,\n-- which are closer than 15.5 degrees to the south pole (FK5 J2000).\n-- Limit the results to the first 200 records.\n-- Expected results:\n--   . Any spectrum, cube, or visibility, whose wavelengths extend below and above the 2.18 micron\n--   . Any image, source table, catalog, whose filter covers the 2.18 micron wavelength\n--     (i.e. the Ks-filter of all instruments, the BrGamma narrow-band filter of HAWKY), \n--     (see Helper: Characteristics of ESO filters below)\n--   . Only products whose declination is southern than -74.5 degrees (FK5 J2000) are considered.\n--   . ORDER BY: the results will be sorted by the declination in the default ascending order.\n--   . TOP 200: only the first 200 records (at maximum) of the result set will be returned,\n--     even if more results are available.\n--   . The TOP operator is applied to the query result set, that is, after the sorting has taken place;\n--     effectively, this means that only the first 200 closest products to the south pole are returned.",
-            "-- Use case name: 'obs wavelength_coverage 2'\n\n\nSELECT TOP 200 target_name, instrument_name, em_min, em_max, em_res_power, obs_id, obs_publisher_did \nFROM ivoa.Obscore \nWHERE dataproduct_type = 'spectrum'                 -- find 1d spectra with \n  AND em_min < 656.28E-9 AND em_max > 656.28E-9     -- wavelength covering the Halpha wavelength (in meters, at redshift 0.0)\n\n-- Find 200 1d spectra covering the Halpha wavelength (in meters, at redshift 0.0)\n\n-- The list of standard dataproduct_type values supported by the ESO archive are:\n-- 'spectrum', 'image', 'cube', 'measurements', 'visibility'\n-- Some ESO-specific types are provided via the dataproduct_subtype column.",
-            "-- Use case name: 'obs spatial_query_footprint 3'\n\nSELECT TOP 100 * FROM ivoa.Obscore \nWHERE CONTAINS(POINT('ICRS',123.2675,-34.5785),s_region) = 1  -- footprint(the s_region field) must contain point (RA,DEC)=(123.2675deg,-34.5785deg)\n\n-- Find products containing the position of the cepheid RS PUPPIS\n-- Please note that this query very likely will NOT return any spectrum. \n-- That is because, in the ESO case, 1D spectra have point-like footprints. \n-- Refer and compare with ospfoot4.",
-            "SELECT TOP 10 obs_publisher_did, instrument_name, em_min, em_max, em_res_power, obs_collection \nFROM ivoa.ObsCore \nWHERE em_min < 2.159E-6 AND em_max > 2.159E-6 -- contains the central lambda of Ks of the 2MASS-Cohen standard photometric system\nAND em_res_power between 5 and 10 -- and limits the resolving power to a small value (no spectrum/cube will match)\n                                  -- Expected are em_res_power(Ks)=6.22 of HAWKI, 7.1 of VIRCAM, 8.0 of ISAAC,\n                                  -- but not the BrGamma of HAWKI (69.85).\n                                  -- See the Helper tables below.",
-            "SELECT TOP 100 instrument_name, em_min, em_max, s_resolution, distance(s_region, point('',266.42,-29.0)) as dist_from_GC, dataproduct_type \n FROM ivoa.Obscore \nWHERE dataproduct_type='image' \n AND INTERSECTS(CIRCLE('ICRS',266.42,-29.0,5),s_region) = 1  -- intersecting (aka overlapping) a 5 deg cone around the Galactic Centre\n AND ((em_min < 1.25E-6 AND em_max > 1.25E-6)   -- Contains lambda(J) or\n     OR (em_min < 1.65E-6 AND em_max > 1.65E-6) -- Contains lambda(H) or\n     OR (em_min < 2.2E-6 AND em_max > 2.2E-6))  -- Contains lambda(Ks) \n AND em_res_power < 20                          -- Low spectral resolving power, includes both images and source tables \n ORDER BY 4               -- 4 is the position of the s_resolution within fields in the SELECT",
-            "SELECT TOP 50 instrument_name, em_min, em_max, s_resolution, distance(s_region, point('',266.42,-29.0)) as dist_footprint_from_GC \n FROM ivoa.Obscore \nWHERE dataproduct_type='image' \n AND INTERSECTS(CIRCLE('ICRS',266.42,-29.0,5),s_region) = 1 \n AND ((em_min < 1.265E-6 AND em_max > 1.265E-6) -- Contains lambda(J) \n     OR (em_min < 1.66E-6 AND em_max > 1.66E-6) -- Contains lambda(H) \n     OR (em_min < 2.18E-6 AND em_max > 2.18E-6)) -- Contains lambda(Ks) \n AND dataproduct_type = 'image' \n ORDER BY 5              -- 5 is the position in the SELECT of the distance from \n                         -- the galactic center of the returned footprint (aliased to dist_footprint_from_GC), in degrees)",
-            "SELECT TOP 50 J.target_name, J.obs_publisher_did, J.s_ra, J.s_dec, J.em_min, J.em_max, J.instrument_name,\n              H.target_name, H.obs_publisher_did, H.s_ra, H.s_dec, H.em_min, H.em_max, H.instrument_name,\n              ESO_INTERSECTION(J.s_region,H.s_region) as OverlappingArea, J.s_region, H.s_region\nFROM\n     (SELECT * FROM ivoa.Obscore WHERE dataproduct_type='image'\n        AND INTERSECTS(CIRCLE('ICRS',266.42,-29.0,5),s_region) = 1\n        AND em_min < 1.265E-6 AND em_max > 1.265E-6\n     ) as J\n,\n     (SELECT * FROM ivoa.Obscore WHERE dataproduct_type='image'\n        AND INTERSECTS(CIRCLE('ICRS',266.42,-29.0,5),s_region) = 1\n        AND em_min < 1.66E-6 AND em_max > 1.66E-6\n     ) as H\nWHERE INTERSECTS(J.s_region, H.s_region)=1\n  AND ESO_INTERSECTION(J.s_region,H.s_region) > 1.79\nORDER by 1, OverlappingArea desc",
-            "SELECT  TOP 1000 *\nFROM ivoa.Obscore\nWHERE dataproduct_type='image'\n AND INTERSECTS(CIRCLE('ICRS',266.42,-29.0,5), s_region) = 1\n AND em_min < 1.265E-6 AND em_max > 1.265E-6 -- Contains lambda(J)",
-            "SELECT top 120\n   distance(s_region, point('',266.42,-29.0)) as dist_footprint, -- CORRECT\n   distance(point('',s_ra,s_dec),point('',266.42,-29.0)) as dist_ra_dec, -- INCORRECT\ndataproduct_type, s_ra, s_dec\nFROM ivoa.Obscore \nWHERE dataproduct_type='image' \nAND INTERSECTS(CIRCLE('ICRS',266.42,-29.0,5),s_region) = 1  -- intersecting (aka overlapping) a 5 deg cone around the Galactic Centre\nAND em_min < 1.25E-6 AND em_max > 1.25E-6   -- Contains lambda(J)\nORDER BY dist_footprint, dist_ra_dec\n-- \n-- CAUTION: Never use s_ra, s_dec when computing distances, use s_region instead!",
-            "SELECT top 1 \nPOLYGON('', 0,80, 270,80, 180,80, 90,80) as myPolygon,\narea(POLYGON('', 0,80, 270,80, 180,80, 90,80)) as myArea,\ncontains( POINT('', 0, 90), POLYGON('', 0,80, 270,80, 180,80, 90,80) ) as isNorthPoleInside,\ncontains( POINT('', 0, -90), POLYGON('', 0,80, 270,80, 180,80, 90,80) ) as isSouthPoleInside\nFROM ivoa.ObsCore",
-            "SELECT top 1 \nPOLYGON('', 0,-80, 90,-80, 180,-80, 270,-80) as myPolygon,\narea(POLYGON('', 0,-80, 90,-80, 180,-80, 270,-80)) as myArea,\ncontains( POINT('', 0, 90), POLYGON('', 0,-80, 90,-80, 180,-80, 270,-80) ) as isNorthPoleInside,\ncontains( POINT('', 0, -90), POLYGON('', 0,-80, 90,-80, 180,-80, 270,-80) ) as isSouthPoleInside\nFROM ivoa.ObsCore",
         ];
 
         #[derive(Debug)]

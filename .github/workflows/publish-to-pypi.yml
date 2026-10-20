@@ -1,6 +1,7 @@
 
-# This workflow will upload a Python Package using Twine when a release is created
+# This workflow will build wheels and sdist on every PR, and upload them to PyPI when a version tag is pushed
 # For more information see: https://github.com/pypa/gh-action-pypi-publish#trusted-publishing
+# Do not rename this file, PyPI trusted publishing is configured for it.
 
 # This workflow uses actions that are not certified by GitHub.
 # They are provided by a third-party and are governed by
@@ -10,31 +11,94 @@
 name: Upload Python Package
 
 on:
-  release:
-    types: [published]
+  push:
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
-jobs:
-  deploy:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
+jobs:
+  build-wheels:
+    name: Build wheels for ${{ matrix.os }} ${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: x86_64
+          - os: ubuntu-24.04-arm
+            arch: aarch64
+          - os: macos-latest
+            arch: arm64
+          - os: windows-latest
+            arch: AMD64
+
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Set up Rust toolchain
+      uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      with:
+        shared-key: "${{ runner.os }}_release"
+    - name: Install uv
+      uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
+    - name: Build wheels
+      uses: pypa/cibuildwheel@b3395e271a35f73dad77f21802abe9b986dfe299  # v4.3.1
+      env:
+        CIBW_BUILD_FRONTEND: "build[uv]"
+        CIBW_ARCHS: ${{ matrix.arch }}
+        # Build abi3 wheels with the oldest supported Python. Must be synchronized with pyproject.toml and Cargo.toml
+        CIBW_BUILD: "cp311-*"
+        # Linux builds run in docker: we install Rust toolchain there and point Cargo to re-use the build cache.
+        CIBW_BEFORE_ALL_LINUX: curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+        CIBW_ENVIRONMENT_LINUX: PATH="$HOME/.cargo/bin:$PATH" CARGO_TARGET_DIR=/host${{ github.workspace }}/target
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+      with:
+        name: wheels-${{ matrix.os }}-${{ matrix.arch }}
+        path: wheelhouse/*.whl
+
+  build-sdist:
+    name: Build sdist
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Install uv
+      uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
+    - name: Build sdist
+      run: uv build --sdist
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+      with:
+        name: sdist
+        path: dist/*.tar.gz
+
+  deploy:
+    needs: [ build-wheels, build-sdist ]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       id-token: write
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
       with:
-        persist-credentials: false
-    - name: Set up Python
-      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
-      with:
-        python-version: '3.15'
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install build
-    - name: Build package
-      run: python -m build
+        path: dist
+        merge-multiple: true
     - name: Publish package
       uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # v1.14.2

@@ -48,9 +48,14 @@ build-backend = "setuptools.build_meta"
 target = "hats_query._extension"
 py-limited-api = true
 
-# Must match pyo3's "abi3-pyXY" feature in Cargo.toml
+# Must match pyo3's "abi3-pyXY" feature in Cargo.toml and CIBW_BUILD in publish-to-pypi.yml.
 [tool.distutils.bdist_wheel]
 py-limited-api = "cp311"
+
+[tool.cibuildwheel]
+test-extras = ["dev"]
+test-sources = ["tests/hats_query", "pyproject.toml"]
+test-command = "python -m pytest tests/hats_query"
 
 [tool.setuptools_scm]
 write_to = "src/hats_query/_version.py"

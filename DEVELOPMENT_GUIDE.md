@@ -34,12 +34,18 @@ pre-commit run --all-files
 
 # Build docs
 sphinx-build -M html ./docs ./_readthedocs
+
+# Run the server with autoreload
+uvicorn --factory hats_query.server:create_app --reload
 ```
 
 ## Repository Structure
 
 ```
 src/hats_query/             Main package
+  server/                   FastAPI app
+    routes/                 Endpoints, one APIRouter per module
+    templates/              Jinja2 templates
 tests/hats_query/           Test suite
 tests/data/lyonetia/        Git submodule with IVOA ADQL test queries (https://github.com/ivoa/lyonetia), see src/adql/ivoa/
 docs/                             Sphinx documentation sources

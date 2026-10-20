@@ -19,6 +19,14 @@ you whether or not you'd like to display it!
 For more information about the project template see the 
 [documentation](https://lincc-ppt.readthedocs.io/en/latest/).
 
+## Running the server
+
+```
+>> uvicorn --factory hats_query.server:create_app --reload
+```
+
+This is a development mode: `--reload` restarts the server on code changes. See [uvicorn docs](https://www.uvicorn.org/settings/) for more options.
+
 ## Dev Guide - Getting Started
 
 Before installing any dependencies or writing code, it's a great idea to create a

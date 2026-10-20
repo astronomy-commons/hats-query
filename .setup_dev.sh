@@ -36,6 +36,9 @@ if let "${pipversion[0]}<${MINIMUM_PIP_VERSION}"; then
     exit 1
 fi
 
+echo "Fetching git submodules"
+git submodule update --init
+
 echo "Installing package and runtime dependencies in local environment"
 python -m pip install -e . > /dev/null
 

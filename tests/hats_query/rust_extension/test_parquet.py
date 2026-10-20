@@ -2,12 +2,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
-from hats_query import ParquetReader, read_parquet, sum_as_string
-
-
-def test_sum_as_string() -> None:
-    """Verify the output of the `sum_as_string` function"""
-    assert sum_as_string(38, 4) == "42"
+from hats_query import ParquetReader, read_parquet
 
 
 async def test_read_parquet(tmp_path) -> None:

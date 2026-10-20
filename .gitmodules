@@ -1,0 +1,3 @@
+[submodule "tests/data/lyonetia"]
+	path = tests/data/lyonetia
+	url = https://github.com/ivoa/lyonetia.git

@@ -61,12 +61,13 @@ testpaths = [
     "src",
     "docs",
 ]
-addopts = "--doctest-modules --doctest-glob=*.rst"
+addopts = "--doctest-modules --doctest-glob=*.rst --ignore=tests/data/lyonetia"
 asyncio_mode = "auto"
 log_cli_level = "INFO"
 
 [tool.ruff]
 line-length = 110
+extend-exclude = ["tests/data/lyonetia"]
 [tool.ruff.lint]
 select = [
     # pycodestyle

@@ -78,7 +78,11 @@ testpaths = [
     "src",
     "docs",
 ]
-addopts = "--doctest-modules --doctest-glob=*.rst --ignore=tests/data/lyonetia"
+# Run STILTS tests with `-m ""`
+addopts = "--doctest-modules --doctest-glob=*.rst --ignore=tests/data/lyonetia -m 'not stilts'"
+markers = [
+    "stilts: needs STILTS, deselected by default",
+]
 asyncio_mode = "auto"
 log_cli_level = "INFO"
 

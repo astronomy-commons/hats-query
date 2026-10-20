@@ -126,11 +126,9 @@ mod tests {
             "SELECT name, ra, dec\n        FROM stars\n        OFFSET 10.5",
         ];
 
-        /// Lyonetia queries known to fail the planning test, please update when the planner is fixed
-        /// to pass them
-        const KNOWN_TO_FAIL_PLANNING: &[&str] = &[
-            "select top 3 * from x \n\t\tunion (\n\t\tselect top 40 a from y \n\t\t\texcept select * from z\n\t\t)",
-        ];
+        /// Lyonetia queries known to fail the planning test. Currently empty, because most of the
+        /// tests fail with unknown table or columns error.
+        const KNOWN_TO_FAIL_PLANNING: &[&str] = &[];
 
         #[derive(Debug)]
         struct TestCase {

@@ -36,14 +36,16 @@ pre-commit run --all-files
 sphinx-build -M html ./docs ./_readthedocs
 
 # Run the server with autoreload
-uvicorn --factory hats_query.server:create_app --reload
+python -m hats_query --config hats-query.toml --server.address 127.0.0.1 --server.port 8000 --server.developer_mode true
 ```
 
 ## Repository Structure
 
 ```
 src/hats_query/             Main package
+  __main__.py               `python -m hats_query` entry point
   server/                   FastAPI app
+    config.py               Configuration, see hats-query.example.toml
     routes/                 Endpoints, one APIRouter per module
     templates/              Jinja2 templates
 tests/hats_query/           Test suite

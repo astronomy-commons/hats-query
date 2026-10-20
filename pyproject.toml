@@ -22,7 +22,12 @@ dependencies = [
     # Minimum version supported by arrow-pyarrow crate
     # https://github.com/apache/arrow-rs/blob/55.0.0/.github/workflows/integration.yml
     "pyarrow >= 15",
+    "pydantic-settings >= 2.3",
+    "uvicorn",
 ]
+
+[project.scripts]
+hats-query = "hats_query.__main__:main"
 
 [project.urls]
 "Source Code" = "https://github.com/astronomy-commons/hats-query"
@@ -37,7 +42,6 @@ dev = [
     "pytest-asyncio", # Runs async tests
     "pytest-cov", # Used to report total code coverage
     "ruff", # Used for static linting of files
-    "uvicorn", # Runs the development server
 ]
 
 [build-system]

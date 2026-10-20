@@ -13,6 +13,7 @@ use datafusion::prelude::*;
 use datafusion::sql::parser::{DFParserBuilder, Statement};
 use datafusion::sql::sqlparser::ast::VisitMut;
 use datafusion::sql::sqlparser::dialect::Dialect;
+use std::ops::ControlFlow;
 
 /// sqlparser dialect for ADQL 2.1
 #[derive(Debug, Default)]
@@ -51,9 +52,9 @@ fn parse_adql(state: &SessionState, query: &str) -> DFResult<Statement> {
         None => return plan_err!("No ADQL query was provided"),
     };
     if let Statement::Statement(sql_statement) = &mut statement
-        && sql_statement.visit(&mut TopToLimit).is_break()
+        && let ControlFlow::Break(err_msg) = sql_statement.visit(&mut TopToLimit)
     {
-        return plan_err!("Invalid ADQL TOP clause");
+        return plan_err!("{err_msg}");
     }
     Ok(statement)
 }

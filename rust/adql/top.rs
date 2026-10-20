@@ -7,7 +7,7 @@ use std::ops::ControlFlow;
 pub(super) struct TopToLimit;
 
 impl VisitorMut for TopToLimit {
-    type Break = ();
+    type Break = &'static str;
 
     fn pre_visit_query(&mut self, query: &mut Query) -> ControlFlow<Self::Break> {
         let top = match query.body.as_mut() {
@@ -18,14 +18,22 @@ impl VisitorMut for TopToLimit {
         if let Some(top) = top {
             // ADQL doesn't support WITH TIES or PERCENT
             if top.with_ties || top.percent {
-                return ControlFlow::Break(());
+                return ControlFlow::Break(
+                    "ADQL does not support WITH TIES or PERCENT in TOP clause",
+                );
             }
             let quantity = match top.quantity {
                 Some(TopQuantity::Constant(quantity)) => quantity,
                 // ADQL doesn't support expressions in TOP
-                Some(TopQuantity::Expr(_)) => return ControlFlow::Break(()),
+                Some(TopQuantity::Expr(_)) => {
+                    return ControlFlow::Break(
+                        "ADQL does not support expressions in TOP clause, specify a constant like TOP 10",
+                    );
+                }
                 // TOP must specify a quantity
-                None => return ControlFlow::Break(()),
+                None => {
+                    return ControlFlow::Break("TOP clause must specify a quantity, like TOP 10");
+                }
             };
             let new_limit = Some(Expr::value(Value::Number(quantity.to_string(), false)));
 
@@ -49,7 +57,11 @@ impl VisitorMut for TopToLimit {
                     *limit = new_limit;
                 }
                 // Not supported by ADQL
-                Some(LimitClause::OffsetCommaLimit { .. }) => return ControlFlow::Break(()),
+                Some(LimitClause::OffsetCommaLimit { .. }) => {
+                    return ControlFlow::Break(
+                        "ADQL does not support OFFSET,LIMIT syntax (with comma), use 'SELECT TOP 10 ... FROM ... OFFSET 10' instead",
+                    );
+                }
                 None => {
                     query.limit_clause = Some(LimitClause::LimitOffset {
                         limit: new_limit,
@@ -71,7 +83,7 @@ mod tests {
     use datafusion::sql::sqlparser::parser::Parser;
 
     /// Parses an ADQL query, applies [`TopToLimit`] and prints the query back
-    fn rewrite(query: &str) -> ControlFlow<(), String> {
+    fn rewrite(query: &str) -> ControlFlow<&'static str, String> {
         let mut statements = Parser::parse_sql(&AdqlDialect, query).expect("Failed to parse query");
         statements.visit(&mut TopToLimit)?;
         // We assume single statement, because ADQL is a single-statement language

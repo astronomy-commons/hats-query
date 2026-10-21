@@ -71,6 +71,7 @@ test-extras = ["dev"]
 test-sources = [
     "tests/hats_query",
     "tests/data/ivoa-schemas",
+    "tests/data/git-submodules/hats/tests/data",
     "hats-query.example.toml",
     "pyproject.toml",
 ]

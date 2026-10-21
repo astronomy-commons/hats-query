@@ -25,23 +25,25 @@ name = "small_sky.object"
 # A collection, with an index on "id"
 path = "/hats/small_sky_o1_collection"
 
-# Queries offered at /tap/examples
-[[tap.table.example]]
+[[tap.table]]
+name = "small_sky.source"
+path = "/hats/small_sky_source"
+
+# Queries offered at /tap/examples, "tables" optionally lists the tables each is about
+[[tap.example]]
 name = "Objects in a cone"
+tables = ["small_sky.object"]
 query = """
 SELECT id, ra, dec
 FROM small_sky.object
 WHERE 1 = CONTAINS(POINT(ra, dec), CIRCLE(315.0, -45.0, 5.0))
 """
 
-[[tap.table.example]]
+[[tap.example]]
 name = "Object by id"
+tables = ["small_sky.object"]
 query = """
 SELECT id, ra, dec
 FROM small_sky.object
 WHERE id = 707
 """
-
-[[tap.table]]
-name = "small_sky.source"
-path = "/hats/small_sky_source"

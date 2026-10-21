@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from hats_query.server import create_app
 
-IVOA_SCHEMAS_DIR = Path(__file__).parent.parent / "data" / "ivoa_schemas"
+IVOA_SCHEMAS_DIR = Path(__file__).parent.parent / "data" / "ivoa-schemas"
 
 
 @pytest.fixture(scope="session")

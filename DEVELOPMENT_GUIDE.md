@@ -34,13 +34,22 @@ pre-commit run --all-files
 
 # Build docs
 sphinx-build -M html ./docs ./_readthedocs
+
+# Run the server with autoreload
+python -m hats_query --config hats-query.toml --server.address 127.0.0.1 --server.port 8000 --server.developer_mode true
 ```
 
 ## Repository Structure
 
 ```
 src/hats_query/             Main package
+  __main__.py               `python -m hats_query` entry point
+  server/                   FastAPI app
+    config.py               Configuration, see hats-query.example.toml
+    routes/                 Endpoints, one APIRouter per module
+    templates/              Jinja2 templates
 tests/hats_query/           Test suite
+tests/data/lyonetia/        Git submodule with IVOA ADQL test queries (https://github.com/ivoa/lyonetia), see src/adql/ivoa/
 docs/                             Sphinx documentation sources
 ```
 
@@ -50,3 +59,6 @@ docs/                             Sphinx documentation sources
 - **File naming:** `tests/hats_query/<SUBDIR>/test_<name>.py`, mirroring the `src/hats_query/` layout.
 - **Fixtures:** defined in `tests/conftest.py`. Use existing fixtures, do not duplicate test data.
 - Default test run: `python -m pytest`
+- **ADQL test queries:** come from the `tests/data/lyonetia` git submodule, fetch it with `git submodule update --init`.
+  Do not modify it; it is excluded from pytest collection and ruff. To bump it, run
+  `git submodule update --remote tests/data/lyonetia` and commit the new pointer.

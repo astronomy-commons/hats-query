@@ -1,12 +1,11 @@
+use crate::adql::{AdqlContext as _, register_adql};
 use crate::exceptions::datafusion_error_to_py_exception;
 use arrow_pyarrow::PyArrowType;
 use datafusion::common::arrow::array::RecordBatch;
-use datafusion::datasource::file_format::options::ParquetReadOptions;
 use datafusion::execution::SendableRecordBatchStream;
-use datafusion::execution::context::SessionContext;
 use datafusion::physical_plan::common::spawn_buffered;
 use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
-use datafusion::prelude::SessionConfig;
+use datafusion::prelude::*;
 use futures_util::StreamExt as _;
 use futures_util::future;
 use pyo3::prelude::*;
@@ -101,6 +100,7 @@ impl InnerParquetReader {
             .execution
             .enable_file_stream_work_stealing = false;
         let ctx = SessionContext::new_with_config(config);
+        register_adql(&ctx);
 
         let string_path = args.path.to_str().ok_or_else(|| {
             pyo3::exceptions::PyValueError::new_err("Invalid path: cannot convert to string")
@@ -118,7 +118,7 @@ impl InnerParquetReader {
             .await
             .map_err(datafusion_error_to_py_exception)?;
         let df = ctx
-            .sql(sql)
+            .adql(sql)
             .await
             .map_err(datafusion_error_to_py_exception)?;
 

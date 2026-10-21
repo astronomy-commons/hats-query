@@ -1,5 +1,5 @@
 
-# This workflow will build wheels and sdist on every PR, and upload them to PyPI when a version tag is pushed
+# This workflow will build wheels and sdist on every PR, and upload them to PyPI when a release is published
 # For more information see: https://github.com/pypa/gh-action-pypi-publish#trusted-publishing
 # Do not rename this file, PyPI trusted publishing is configured for it.
 
@@ -11,8 +11,8 @@
 name: Upload Python Package
 
 on:
-  push:
-    tags: [ 'v*' ]
+  release:
+    types: [ published ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
@@ -22,7 +22,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+  cancel-in-progress: ${{ github.event_name != 'release' }}
 
 jobs:
   build-wheels:
@@ -91,7 +91,7 @@ jobs:
 
   deploy:
     needs: [ build-wheels, build-sdist ]
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
     permissions:
       id-token: write

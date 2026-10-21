@@ -17,10 +17,17 @@ classifiers = [
 dynamic = ["version"]
 requires-python = ">=3.11"
 dependencies = [
+    "fastapi",
+    "jinja2",
     # Minimum version supported by arrow-pyarrow crate
     # https://github.com/apache/arrow-rs/blob/55.0.0/.github/workflows/integration.yml
-    "pyarrow >= 15"
+    "pyarrow >= 15",
+    "pydantic-settings >= 2.3",
+    "uvicorn",
 ]
+
+[project.scripts]
+hats-query = "hats_query.__main__:main"
 
 [project.urls]
 "Source Code" = "https://github.com/astronomy-commons/hats-query"
@@ -28,6 +35,7 @@ dependencies = [
 # On a mac, install optional dependencies with `pip install '.[dev]'` (include the single quotes)
 [project.optional-dependencies]
 dev = [
+    "httpx2", # Used by fastapi.testclient.TestClient
     "jupyter", # Clears output from Jupyter notebooks
     "pre-commit", # Used to run checks before finalizing a git commit
     "pytest",
@@ -44,6 +52,9 @@ requires = [
 ]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools.package-data]
+"hats_query.server" = ["templates/*.html"]
+
 [[tool.setuptools-rust.ext-modules]]
 target = "hats_query._extension"
 py-limited-api = true
@@ -57,7 +68,7 @@ write_to = "src/hats_query/_version.py"
 
 [tool.pytest.ini_options]
 testpaths = [
-    "tests",
+    "tests/hats_query",
     "src",
     "docs",
 ]

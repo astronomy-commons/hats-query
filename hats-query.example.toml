@@ -1,0 +1,41 @@
+#   python -m hats_query --config hats-query.toml
+
+[server]
+address = "0.0.0.0"
+port = 80
+# Reload on code changes and return tracebacks in error responses
+developer_mode = false
+# Who runs this deployment
+contact = "ops@example.org"
+
+[log]
+# critical, error, warning, info, debug, or trace
+level = "info"
+
+# Directories this service reads, maps "source" URL to "path" endpoint.
+[[mount]]
+path = "/hats"
+source = "/data/hats"
+
+[[mount]]
+path = "/staging"
+source = "staging"
+
+# HATS catalogs published over TAP
+[[tap.table]]
+name = "gaia_dr3.gaia_source"
+path = "/hats/gaia_dr3"
+
+# Queries offered at /tap/examples
+[[tap.table.example]]
+name = "Bright stars near M13"
+query = """
+SELECT TOP 10 source_id, ra, dec, phot_g_mean_mag
+FROM gaia_dr3.gaia_source
+WHERE phot_g_mean_mag < 15
+  AND 1 = CONTAINS(POINT(ra, dec), CIRCLE(250.42, 36.46, 0.1))
+"""
+
+[[tap.table]]
+name = "ztf.dr24_lc"
+path = "/hats/ztf_dr24_lc"

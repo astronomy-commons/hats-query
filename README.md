@@ -19,6 +19,26 @@ you whether or not you'd like to display it!
 For more information about the project template see the 
 [documentation](https://lincc-ppt.readthedocs.io/en/latest/).
 
+## Running the server
+
+```
+>> hats-query --config hats-query.toml
+```
+
+See [`hats-query.example.toml`](hats-query.example.toml) for the config file and `hats-query --help` for all options.
+
+Every setting can be given on the command line, as an environment variable, or in the config file, in this order of priority:
+
+```
+>> hats-query --server.address 127.0.0.1 --server.port 8000
+>> HATS_QUERY_SERVER__ADDRESS=127.0.0.1 HATS_QUERY_SERVER__PORT=8000 hats-query
+```
+
+The config file path can also be given as `HATS_QUERY_CONFIG`.
+Relative mount `source` paths in the config file are resolved against the file's directory.
+
+`--server.developer_mode true` restarts the server on code changes and returns tracebacks in error responses.
+
 ## Dev Guide - Getting Started
 
 Before installing any dependencies or writing code, it's a great idea to create a

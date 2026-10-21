@@ -34,12 +34,20 @@ pre-commit run --all-files
 
 # Build docs
 sphinx-build -M html ./docs ./_readthedocs
+
+# Run the server with autoreload
+python -m hats_query --config hats-query.toml --server.address 127.0.0.1 --server.port 8000 --server.developer_mode true
 ```
 
 ## Repository Structure
 
 ```
 src/hats_query/             Main package
+  __main__.py               `python -m hats_query` entry point
+  server/                   FastAPI app
+    config.py               Configuration, see hats-query.example.toml
+    routes/                 Endpoints, one APIRouter per module
+    templates/              Jinja2 templates
 tests/hats_query/           Test suite
 tests/data/lyonetia/        Git submodule with IVOA ADQL test queries (https://github.com/ivoa/lyonetia), see src/adql/ivoa/
 docs/                             Sphinx documentation sources

@@ -3,10 +3,8 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
-from ..templating import templates
-
-# TODO: take it from the TAP router once it exists
-TAP_PATH = "/tap"
+from hats_query.server.routes.tap import TAP_PATH
+from hats_query.server.templating import templates
 
 router = APIRouter()
 

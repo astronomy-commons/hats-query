@@ -49,6 +49,7 @@ Relative mount `source` paths in the config file are resolved against the file's
 - [TAPRegExt 1.0](https://www.ivoa.net/Documents/TAPRegExt/20120827/index.html) — TAP Registry Extension (capabilities metadata)
 - [VODataService 1.2](https://www.ivoa.net/Documents/VODataService/20211102/index.html) — VO Data Service (table metadata schema)
 - [VOTable 1.5](https://www.ivoa.net/Documents/VOTable/20250116/index.html) — VO Table format
+- [XSD 1.1](https://www.w3.org/TR/xmlschema11-2/) — XML Schema Definition
 
 ## Dev Guide - Getting Started
 

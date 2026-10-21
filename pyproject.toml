@@ -23,6 +23,7 @@ dependencies = [
     # https://github.com/apache/arrow-rs/blob/55.0.0/.github/workflows/integration.yml
     "pyarrow >= 15",
     "pydantic-settings >= 2.3",
+    "pyvo",
     "uvicorn",
 ]
 
@@ -42,6 +43,7 @@ dev = [
     "pytest-asyncio", # Runs async tests
     "pytest-cov", # Used to report total code coverage
     "ruff", # Used for static linting of files
+    "xmlschema", # Validates responses against IVOA XML schemas
 ]
 
 [build-system]
@@ -66,7 +68,12 @@ py-limited-api = "cp311"
 # We skip the STILTS and Rust tests here because we run the tests mainly to check the wheels.
 [tool.cibuildwheel]
 test-extras = ["dev"]
-test-sources = ["tests/hats_query", "hats-query.example.toml", "pyproject.toml"]
+test-sources = [
+    "tests/hats_query",
+    "tests/data/ivoa_schemas",
+    "hats-query.example.toml",
+    "pyproject.toml",
+]
 test-command = "python -m pytest tests/hats_query"
 
 [tool.setuptools_scm]

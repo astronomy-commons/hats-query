@@ -2,11 +2,21 @@ import subprocess
 import sys
 import time
 import urllib.request
+from pathlib import Path
 
 import pytest
+import xmlschema
 from fastapi.testclient import TestClient
 
 from hats_query.server import create_app
+
+IVOA_SCHEMAS_DIR = Path(__file__).parent.parent / "data" / "ivoa_schemas"
+
+
+@pytest.fixture(scope="session")
+def vosi_availability_schema() -> xmlschema.XMLSchema:
+    """VOSI availability XML schema"""
+    return xmlschema.XMLSchema(IVOA_SCHEMAS_DIR / "VOSIAvailability-v1.0.xsd")
 
 
 @pytest.fixture

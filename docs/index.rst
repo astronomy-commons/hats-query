@@ -33,8 +33,9 @@ Notes:
 
 1) The package includes a Rust extension, so a Rust toolchain is required to build it.
    The command above installs it with `rustup <https://rustup.rs>`_.
-2) ADQL tests use the IVOA `lyonetia <https://github.com/ivoa/lyonetia>`_ query collection
-   (its ``src/adql/ivoa/`` directory), which is a git submodule at ``tests/data/git-submodules/lyonetia``.
+2) Tests use third-party data from git submodules in ``tests/data/git-submodules/``:
+   example HATS catalogs from `hats <https://github.com/astronomy-commons/hats>`_ (its ``tests/data/`` directory)
+   and the IVOA `lyonetia <https://github.com/ivoa/lyonetia>`_ ADQL query collection (its ``src/adql/ivoa/`` directory).
    You can skip ``git submodule update --init`` if you cloned with ``git clone --recurse-submodules``.
 3) The single quotes around ``'[dev]'`` may not be required for your operating system.
 4) ``pre-commit install`` will initialize pre-commit for this local repository, so

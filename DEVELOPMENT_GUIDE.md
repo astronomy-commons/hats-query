@@ -50,6 +50,7 @@ src/hats_query/             Main package
     templates/              Jinja2 templates
 tests/hats_query/           Test suite
 tests/data/git-submodules/  Git submodules, excluded from pytest collection and ruff
+  hats/                     HATS library (https://github.com/astronomy-commons/hats), see tests/data/ for example catalogs
   lyonetia/                 IVOA ADQL test queries (https://github.com/ivoa/lyonetia), see src/adql/ivoa/
 docs/                             Sphinx documentation sources
 ```
@@ -60,6 +61,8 @@ docs/                             Sphinx documentation sources
 - **File naming:** `tests/hats_query/<SUBDIR>/test_<name>.py`, mirroring the `src/hats_query/` layout.
 - **Fixtures:** defined in `tests/conftest.py`. Use existing fixtures, do not duplicate test data.
 - Default test run: `python -m pytest`
-- **ADQL test queries:** come from the `tests/data/git-submodules/lyonetia` git submodule, fetch it with `git submodule update --init`.
-  Do not modify it; it is excluded from pytest collection and ruff. To bump it, run
-  `git submodule update --remote tests/data/git-submodules/lyonetia` and commit the new pointer.
+- **Third-party test data:** git submodules in `tests/data/git-submodules/`, fetch them with `git submodule update --init`.
+  Do not modify them; they are excluded from pytest collection and ruff. To bump one, run
+  `git submodule update --remote tests/data/git-submodules/<name>` and commit the new pointer.
+  - **Example HATS catalogs:** come from `tests/data/` of the `hats` submodule.
+  - **ADQL test queries:** come from `src/adql/ivoa/` of the `lyonetia` submodule.

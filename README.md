@@ -64,7 +64,7 @@ create and activate a new environment.
 ```
 
 ADQL tests use the IVOA [lyonetia](https://github.com/ivoa/lyonetia) query collection
-(its `src/adql/ivoa/` directory), which is a git submodule at `tests/data/lyonetia`.
+(its `src/adql/ivoa/` directory), which is a git submodule at `tests/data/git-submodules/lyonetia`.
 Either clone with `git clone --recurse-submodules`, or let `./.setup_dev.sh` fetch it
 for you (it runs `git submodule update --init`).
 

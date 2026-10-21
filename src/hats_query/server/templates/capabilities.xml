@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<vosi:capabilities
+    xmlns:vosi="http://www.ivoa.net/xml/VOSICapabilities/v1.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:vs="http://www.ivoa.net/xml/VODataService/v1.1"
+    xmlns:tr="http://www.ivoa.net/xml/TAPRegExt/v1.0">
+  <capability standardID="ivo://ivoa.net/std/TAP" xsi:type="tr:TableAccess">
+    <interface xsi:type="vs:ParamHTTP" role="std" version="1.1">
+      <accessURL use="base">{{ tap_url }}</accessURL>
+    </interface>
+    <language>
+      <name>ADQL</name>
+      <version ivo-id="ivo://ivoa.net/std/ADQL#v2.1">2.1</version>
+      <description>Astronomical Data Query Language</description>
+    </language>
+    <outputFormat ivo-id="ivo://ivoa.net/std/TAPRegExt#output-votable-binary2">
+      <mime>application/x-votable+xml</mime>
+      <alias>votable</alias>
+    </outputFormat>
+  </capability>
+  <capability standardID="ivo://ivoa.net/std/VOSI#capabilities">
+    <interface xsi:type="vs:ParamHTTP">
+      <accessURL use="full">{{ capabilities_url }}</accessURL>
+    </interface>
+  </capability>
+  <capability standardID="ivo://ivoa.net/std/VOSI#availability">
+    <interface xsi:type="vs:ParamHTTP">
+      <accessURL use="full">{{ availability_url }}</accessURL>
+    </interface>
+  </capability>
+</vosi:capabilities>

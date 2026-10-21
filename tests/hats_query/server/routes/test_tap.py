@@ -14,3 +14,11 @@ def test_availability(client, vosi_availability_schema) -> None:
     up_since = datetime.strptime(availability["vosi:upSince"], IVOA_DATETIME_FORMAT)
     assert up_since.replace(tzinfo=UTC) <= datetime.now(UTC)
     assert availability["vosi:note"] == ["service is accepting queries"]
+
+
+def test_capabilities(client, vosi_capabilities_schema) -> None:
+    """Verify that /tap/capabilities is a valid VOSI capabilities document"""
+    response = client.get("/tap/capabilities")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/xml")
+    vosi_capabilities_schema.validate(response.text)

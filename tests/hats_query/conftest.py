@@ -19,6 +19,22 @@ def vosi_availability_schema() -> xmlschema.XMLSchema:
     return xmlschema.XMLSchema(IVOA_SCHEMAS_DIR / "VOSIAvailability-v1.0.xsd")
 
 
+@pytest.fixture(scope="session")
+def vosi_capabilities_schema() -> xmlschema.XMLSchema:
+    """VOSI capabilities XML schema, with the TAPRegExt capability type"""
+    return xmlschema.XMLSchema(
+        str(IVOA_SCHEMAS_DIR / "VOSICapabilities-v1.0.xsd"),
+        # Imported namespaces from local files, not their remote schemaLocation
+        locations={
+            "http://www.ivoa.net/xml/VOResource/v1.0": str(IVOA_SCHEMAS_DIR / "VOResource-v1.3.xsd"),
+            "http://www.ivoa.net/xml/VODataService/v1.1": str(IVOA_SCHEMAS_DIR / "VODataService-v1.3.xsd"),
+            "http://www.ivoa.net/xml/TAPRegExt/v1.0": str(IVOA_SCHEMAS_DIR / "TAPRegExt-v1.1.xsd"),
+            "http://www.ivoa.net/xml/STC/stc-v1.30.xsd": str(IVOA_SCHEMAS_DIR / "stc-stub.xsd"),
+        },
+        allow="local",
+    )
+
+
 @pytest.fixture
 def client() -> TestClient:
     """Test client for a fresh hats-query application"""

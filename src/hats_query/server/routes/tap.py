@@ -30,6 +30,15 @@ async def capabilities(request: Request) -> Response:
             "tap_url": capabilities_url.removesuffix("/capabilities"),
             "capabilities_url": capabilities_url,
             "availability_url": request.url_for("availability"),
+            "examples_url": request.url_for("examples"),
         },
         media_type="text/xml",
+    )
+
+
+@router.get("/examples", response_class=Response)
+async def examples(request: Request) -> Response:
+    """DALI examples, see https://www.ivoa.net/documents/DALI/20231215/REC-DALI-1.1.html#tth_sEc2.3"""
+    return templates.TemplateResponse(
+        request, "examples.html", {"examples": request.app.state.config.tap.examples}, media_type="text/html"
     )

@@ -28,4 +28,9 @@
       <accessURL use="full">{{ availability_url }}</accessURL>
     </interface>
   </capability>
+  <capability standardID="ivo://ivoa.net/std/DALI#examples">
+    <interface xsi:type="vs:ParamHTTP">
+      <accessURL use="full">{{ examples_url }}</accessURL>
+    </interface>
+  </capability>
 </vosi:capabilities>

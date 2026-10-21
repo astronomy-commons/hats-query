@@ -14,6 +14,12 @@ IVOA_SCHEMAS_DIR = Path(__file__).parent.parent / "data" / "ivoa-schemas"
 
 
 @pytest.fixture(scope="session")
+def example_config_path() -> Path:
+    """The example config file, hats-query.example.toml"""
+    return Path(__file__).parents[2] / "hats-query.example.toml"
+
+
+@pytest.fixture(scope="session")
 def vosi_availability_schema() -> xmlschema.XMLSchema:
     """VOSI availability XML schema"""
     return xmlschema.XMLSchema(IVOA_SCHEMAS_DIR / "VOSIAvailability-v1.0.xsd")
@@ -42,12 +48,22 @@ def client() -> TestClient:
 
 
 @pytest.fixture(scope="module")
-def live_server_url():
-    """Base URL of a hats-query server running in a subprocess"""
+def live_server_url(example_config_path):
+    """Base URL of a hats-query server running in a subprocess with the example config"""
     port = "8321"
     url = f"http://127.0.0.1:{port}"
     process = subprocess.Popen(
-        [sys.executable, "-m", "hats_query", "--server.port", str(port), "--log.level", "warning"]
+        [
+            sys.executable,
+            "-m",
+            "hats_query",
+            "--config",
+            str(example_config_path),
+            "--server.port",
+            str(port),
+            "--log.level",
+            "warning",
+        ]
     )
     for _ in range(100):
         try:

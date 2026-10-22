@@ -82,7 +82,7 @@ class TapConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True, validate_by_name=True, validate_by_alias=True)
 
-    tables: list[TapTableConfig] = Field(default_factory=list, alias="table")
+    tables: list[TapTableConfig] = Field(alias="table", min_length=1)
     examples: list[TapExampleConfig] = Field(default_factory=list, alias="example")
 
     @model_validator(mode="after")
@@ -114,7 +114,7 @@ class Config(BaseSettings):
     server: ServerConfig = ServerConfig()
     log: LogConfig = LogConfig()
     mounts: list[MountConfig] = Field(default_factory=list, alias="mount")
-    tap: TapConfig = TapConfig()
+    tap: TapConfig
 
     @classmethod
     def settings_customise_sources(

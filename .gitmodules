@@ -1,3 +1,6 @@
-[submodule "tests/data/lyonetia"]
-	path = tests/data/lyonetia
+[submodule "tests/data/git-submodules/hats"]
+	path = tests/data/git-submodules/hats
+	url = https://github.com/astronomy-commons/hats
+[submodule "tests/data/git-submodules/lyonetia"]
+	path = tests/data/git-submodules/lyonetia
 	url = https://github.com/ivoa/lyonetia.git

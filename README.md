@@ -63,9 +63,10 @@ create and activate a new environment.
 >> conda activate <env_name>
 ```
 
-ADQL tests use the IVOA [lyonetia](https://github.com/ivoa/lyonetia) query collection
-(its `src/adql/ivoa/` directory), which is a git submodule at `tests/data/lyonetia`.
-Either clone with `git clone --recurse-submodules`, or let `./.setup_dev.sh` fetch it
+Tests use third-party data from git submodules in `tests/data/git-submodules/`:
+example HATS catalogs from [hats](https://github.com/astronomy-commons/hats) (its `tests/data/` directory)
+and the IVOA [lyonetia](https://github.com/ivoa/lyonetia) ADQL query collection (its `src/adql/ivoa/` directory).
+Either clone with `git clone --recurse-submodules`, or let `./.setup_dev.sh` fetch them
 for you (it runs `git submodule update --init`).
 
 Once you have created a new environment, you can install this project for local

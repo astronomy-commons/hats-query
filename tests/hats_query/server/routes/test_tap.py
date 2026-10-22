@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from xml.etree import ElementTree
 
 from pyvo.dal.tap import IVOA_DATETIME_FORMAT
 
@@ -22,3 +23,19 @@ def test_capabilities(client, vosi_capabilities_schema) -> None:
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/xml")
     vosi_capabilities_schema.validate(response.text)
+
+
+def test_examples(client) -> None:
+    """Verify that /tap/examples lists the configured examples, parsed as XML the way pyvo does"""
+    config = client.app.state.config
+    response = client.get("/tap/examples")
+    assert response.status_code == 200
+    examples = ElementTree.fromstring(response.text).findall(".//*[@typeof='example']")
+    assert [
+        (
+            example.find(".//*[@property='name']").text,
+            example.find(".//*[@property='query']").text,
+            [table.text for table in example.findall(".//*[@property='table']")],
+        )
+        for example in examples
+    ] == [(example.name, example.query.strip(), example.tables) for example in config.tap.examples]

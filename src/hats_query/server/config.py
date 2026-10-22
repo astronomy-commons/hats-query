@@ -6,7 +6,7 @@ import tomllib
 from pathlib import Path
 from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ENV_PREFIX = "HATS_QUERY_"
@@ -57,23 +57,24 @@ class MountConfig(BaseModel):
         return source
 
 
+class TapTableConfig(BaseModel):
+    """A ``[[tap.table]]``: the HATS catalog at `path` published as the table `name`."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    name: str
+    path: str
+
+
 class TapExampleConfig(BaseModel):
-    """A ``[[tap.table.example]]``: a query offered at /tap/examples."""
+    """A ``[[tap.example]]``: a query offered at /tap/examples."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     name: str
     query: str
-
-
-class TapTableConfig(BaseModel):
-    """A ``[[tap.table]]``: the HATS catalog at `path` published as the table `name`."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True, validate_by_name=True, validate_by_alias=True)
-
-    name: str
-    path: str
-    examples: list[TapExampleConfig] = Field(default_factory=list, alias="example")
+    tables: list[str] = Field(default_factory=list)
+    """Tables the query is about, out of the ``[[tap.table]]`` names."""
 
 
 class TapConfig(BaseModel):
@@ -81,7 +82,17 @@ class TapConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True, validate_by_name=True, validate_by_alias=True)
 
-    tables: list[TapTableConfig] = Field(default_factory=list, alias="table")
+    tables: list[TapTableConfig] = Field(alias="table", min_length=1)
+    examples: list[TapExampleConfig] = Field(default_factory=list, alias="example")
+
+    @model_validator(mode="after")
+    def _examples_name_known_tables(self) -> Self:
+        known = {table.name for table in self.tables}
+        for example in self.examples:
+            unknown = [table for table in example.tables if table not in known]
+            if unknown:
+                raise ValueError(f"example {example.name!r} names unknown tables: {', '.join(unknown)}")
+        return self
 
 
 class Config(BaseSettings):
@@ -103,7 +114,7 @@ class Config(BaseSettings):
     server: ServerConfig = ServerConfig()
     log: LogConfig = LogConfig()
     mounts: list[MountConfig] = Field(default_factory=list, alias="mount")
-    tap: TapConfig = TapConfig()
+    tap: TapConfig
 
     @classmethod
     def settings_customise_sources(

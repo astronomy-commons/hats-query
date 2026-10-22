@@ -48,6 +48,10 @@ jobs:
     - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       with:
         shared-key: "${{ runner.os }}_debug_coverage"
+    - name: Install STILTS
+      run: |
+        curl -fsSL -o ~/stilts.jar https://www.star.bris.ac.uk/~mbt/stilts/stilts.jar
+        echo "STILTS=java -jar $HOME/stilts.jar" >> "$GITHUB_ENV"
     - name: Install dependencies and run tests with coverage
       run: |
         source <(cargo llvm-cov show-env --export-prefix)
@@ -55,7 +59,7 @@ jobs:
         sudo apt-get update
         uv pip install --system -e .[dev]
         if [ -f requirements.txt ]; then uv pip install --system -r requirements.txt; fi
-        python -m pytest -o log_cli=true -vv --cov=hats_query --cov-report=xml
+        python -m pytest -o log_cli=true -vv -m "" --cov=hats_query --cov-report=xml
         cargo llvm-cov report --lcov --output-path lcov.info
     - name: Upload coverage report to codecov
       uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5  # v7.1.1

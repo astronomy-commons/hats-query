@@ -50,6 +50,10 @@ jobs:
         shared-key: "${{ runner.os }}_debug"
     - name: Install uv
       uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
+    - name: Install STILTS
+      run: |
+        curl -fsSL -o ~/stilts.jar https://www.star.bris.ac.uk/~mbt/stilts/stilts.jar
+        echo "STILTS=java -jar $HOME/stilts.jar" >> "$GITHUB_ENV"
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -66,4 +70,4 @@ jobs:
         pip list
     - name: Run unit tests with pytest
       run: |
-        python -m pytest -o log_cli=true -vv
+        python -m pytest -o log_cli=true -vv -m ""

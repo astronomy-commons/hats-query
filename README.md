@@ -39,6 +39,18 @@ Relative mount `source` paths in the config file are resolved against the file's
 
 `--server.developer_mode true` restarts the server on code changes and returns tracebacks in error responses.
 
+## IVOA standards
+
+- [TAP 1.1](https://www.ivoa.net/Documents/TAP/20190927/index.html) — Table Access Protocol
+- [ADQL 2.1](https://www.ivoa.net/Documents/ADQL/20231215/index.html) — Astronomical Data Query Language
+- [DALI 1.1](https://www.ivoa.net/Documents/DALI/20170517/index.html) — Data Access Layer Interface
+- [UWS 1.1](https://www.ivoa.net/Documents/UWS/20161024/index.html) — Universal Worker Service (async jobs)
+- [VOSI 1.1](https://www.ivoa.net/Documents/VOSI/20170524/index.html) — VO Support Interfaces (`/availability`, `/capabilities`, `/tables`)
+- [TAPRegExt 1.0](https://www.ivoa.net/Documents/TAPRegExt/20120827/index.html) — TAP Registry Extension (capabilities metadata)
+- [VODataService 1.2](https://www.ivoa.net/Documents/VODataService/20211102/index.html) — VO Data Service (table metadata schema)
+- [VOTable 1.5](https://www.ivoa.net/Documents/VOTable/20250116/index.html) — VO Table format
+- [XSD 1.1](https://www.w3.org/TR/xmlschema11-2/) — XML Schema Definition
+
 ## Dev Guide - Getting Started
 
 Before installing any dependencies or writing code, it's a great idea to create a

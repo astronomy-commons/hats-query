@@ -9,6 +9,7 @@ import xmlschema
 from fastapi.testclient import TestClient
 
 from hats_query.server import create_app
+from hats_query.server.config import Config
 
 IVOA_SCHEMAS_DIR = Path(__file__).parent.parent / "data" / "ivoa-schemas"
 
@@ -42,9 +43,9 @@ def vosi_capabilities_schema() -> xmlschema.XMLSchema:
 
 
 @pytest.fixture
-def client() -> TestClient:
-    """Test client for a fresh hats-query application"""
-    return TestClient(create_app())
+def client(example_config_path) -> TestClient:
+    """Test client for a fresh hats-query application with the example config"""
+    return TestClient(create_app(Config.load(example_config_path)))
 
 
 @pytest.fixture(scope="module")

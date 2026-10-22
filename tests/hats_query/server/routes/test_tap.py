@@ -1,11 +1,7 @@
 from datetime import UTC, datetime
 from xml.etree import ElementTree
 
-from fastapi.testclient import TestClient
 from pyvo.dal.tap import IVOA_DATETIME_FORMAT
-
-from hats_query.server import create_app
-from hats_query.server.config import Config
 
 
 def test_availability(client, vosi_availability_schema) -> None:
@@ -29,10 +25,10 @@ def test_capabilities(client, vosi_capabilities_schema) -> None:
     vosi_capabilities_schema.validate(response.text)
 
 
-def test_examples(example_config_path) -> None:
+def test_examples(client) -> None:
     """Verify that /tap/examples lists the configured examples, parsed as XML the way pyvo does"""
-    config = Config.load(example_config_path)
-    response = TestClient(create_app(config)).get("/tap/examples")
+    config = client.app.state.config
+    response = client.get("/tap/examples")
     assert response.status_code == 200
     examples = ElementTree.fromstring(response.text).findall(".//*[@typeof='example']")
     assert [

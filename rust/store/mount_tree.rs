@@ -50,14 +50,13 @@ impl MountTree {
     }
 
     /// Finds the deepest mount containing `path`, returns its store and the path inside it.
-    pub(crate) fn resolve(&self, path: &str) -> DFResult<(Arc<dyn ObjectStore>, Path)> {
-        let segments: Vec<&str> = path.split("/").filter(|s| !s.is_empty()).collect();
+    pub(crate) fn resolve(&self, path: &Path) -> DFResult<(Arc<dyn ObjectStore>, Path)> {
         // The deepest mount on the path, and the number of segments in its mount path
-        let (mount, depth) = segments
-            .iter()
+        let (mount, depth) = path
+            .into_iter()
             // Walk down the tree until a segment has no node
             .scan(&self.root, |node, segment| {
-                *node = node.children.get(*segment)?;
+                *node = node.children.get(segment.as_ref())?;
                 Some(*node)
             })
             // Count the depth
@@ -71,7 +70,7 @@ impl MountTree {
             .ok_or_else(|| {
                 DataFusionError::Configuration(format!("No mount found for path '{path}'"))
             })?;
-        let rest = Path::parse(segments[depth..].join("/"))?;
+        let rest = Path::from_iter(path.into_iter().skip(depth));
         Ok((mount.get_store(), rest))
     }
 }
@@ -121,6 +120,16 @@ pub(crate) struct MountConfig {
     path: String,
     /// The mounted directory, currently an absolute local path.
     source: String,
+}
+
+#[cfg(test)]
+impl MountConfig {
+    pub(crate) fn new(path: impl Into<String>, source: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            source: source.into(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -219,7 +228,7 @@ mod tests {
                 "cat/x",
             ),
         ] {
-            let (store, resolved) = tree.resolve(path).unwrap();
+            let (store, resolved) = tree.resolve(&path.into()).unwrap();
             assert_eq!(resolved.as_ref(), rest, "{path}");
             let node = mount_segments
                 .iter()
@@ -236,7 +245,7 @@ mod tests {
     fn resolve_without_mount() {
         let tree = MountTree::from_mount_configs(vec![mount_config("/top")]).unwrap();
         for path in ["/", "/other", "/other/top"] {
-            let result = tree.resolve(path);
+            let result = tree.resolve(&path.into());
             assert!(
                 matches!(result, Err(DataFusionError::Configuration(_))),
                 "{path}"
@@ -247,7 +256,7 @@ mod tests {
     #[test]
     fn resolve_rejects_dot_dot() {
         let tree = MountTree::from_mount_configs(vec![mount_config("/top")]).unwrap();
-        assert!(tree.resolve("/top/../x").is_err());
+        assert!(tree.resolve(&"/top/../x".into()).is_err());
     }
 
     #[test]

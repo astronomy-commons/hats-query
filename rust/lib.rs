@@ -6,6 +6,7 @@ mod hats;
 mod parquet;
 mod store;
 mod sums;
+mod tap;
 
 use crate::engine::{PyEngine, build_engine};
 use crate::parquet::ParquetReader;

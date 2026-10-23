@@ -1,5 +1,6 @@
 use crate::exceptions::datafusion_error_to_py_exception;
 use crate::store::mount_tree::{MountConfig, MountTree};
+use crate::tap::{KnownTables, TapTableConfig};
 use bytes::Bytes;
 use datafusion::common::Result as DFResult;
 use datafusion::object_store::ObjectStoreExt;
@@ -15,6 +16,7 @@ pub(crate) struct PyEngine {
 
 pub(crate) struct Engine {
     mounts: MountTree,
+    tables: KnownTables,
 }
 
 /// Builds an engine with the given mount configurations.
@@ -23,22 +25,32 @@ pub(crate) struct Engine {
 /// ----------
 /// mount_configs : list of MountConfig
 ///     The mount configurations to use
+/// tap_table_configs : list of TapTableConfig
+///     The TAP table configurations to use
 ///
 /// Returns
 /// -------
 /// Engine
 #[pyfunction]
-pub(crate) fn build_engine(mount_configs: Vec<MountConfig>) -> PyResult<PyEngine> {
-    let engine = Engine::new(mount_configs).map_err(datafusion_error_to_py_exception)?;
+pub(crate) fn build_engine(
+    mount_configs: Vec<MountConfig>,
+    tap_table_configs: Vec<TapTableConfig>,
+) -> PyResult<PyEngine> {
+    let engine =
+        Engine::new(mount_configs, tap_table_configs).map_err(datafusion_error_to_py_exception)?;
     Ok(PyEngine {
         inner: Arc::new(engine),
     })
 }
 
 impl Engine {
-    pub(crate) fn new(mount_configs: Vec<MountConfig>) -> DFResult<Self> {
+    pub(crate) fn new(
+        mount_configs: Vec<MountConfig>,
+        tap_table_configs: Vec<TapTableConfig>,
+    ) -> DFResult<Self> {
         let mounts = MountTree::from_mount_configs(mount_configs)?;
-        Ok(Self { mounts })
+        let tables = KnownTables::from_tap_table_configs(tap_table_configs);
+        Ok(Self { mounts, tables })
     }
 
     pub(crate) async fn read_bytes(&self, path: &Path) -> DFResult<Bytes> {

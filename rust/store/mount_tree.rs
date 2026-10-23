@@ -241,10 +241,12 @@ mod tests {
         }
     }
 
+    /// `Path` escapes "..", so it is a literal segment and can't escape the mount.
     #[test]
-    fn resolve_rejects_dot_dot() {
+    fn resolve_keeps_dot_dot_inside_mount() {
         let tree = MountTree::from_mount_configs(vec![mount_config("/top")]).unwrap();
-        assert!(tree.resolve(&"/top/../x".into()).is_err());
+        let (_, resolved) = tree.resolve(&"/top/../x".into()).unwrap();
+        assert_eq!(resolved.as_ref(), "%2E%2E/x");
     }
 
     #[test]

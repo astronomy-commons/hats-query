@@ -1,6 +1,8 @@
 mod catalog;
 mod properties;
 
+pub(crate) use catalog::Hats;
+
 #[cfg(test)]
 mod test_utils {
     use crate::engine::Engine;
@@ -13,7 +15,7 @@ mod test_utils {
     /// An engine with the crate directory mounted at "/".
     pub(super) fn engine() -> Arc<Engine> {
         let mount = MountConfig::new("/", env!("CARGO_MANIFEST_DIR"));
-        Arc::new(Engine::new(vec![mount]).unwrap())
+        Arc::new(Engine::new(vec![mount], vec![]).unwrap())
     }
 
     pub(super) fn test_data_path(name: &str) -> Path {

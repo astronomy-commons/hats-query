@@ -81,4 +81,11 @@ impl PyEngine {
                 .map_err(datafusion_error_to_py_exception)
         })
     }
+
+    // fn query<'py>(&self, py: Python<'py>, adql: String) -> PyResult<Bound<'py, PyAny>> {
+    //     let engine = self.inner.clone();
+    //     future_into_py(py, async move {
+    //         engine.query(adql).await.map_err(datafusion_error_to_py_exception)
+    //     })
+    // }
 }

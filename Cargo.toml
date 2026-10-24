@@ -11,6 +11,7 @@ path = "rust/lib.rs"
 [dependencies]
 # Must match the "arrow" version used by datafusion
 arrow-pyarrow = "59"
+async-trait = "0.1"
 bytes = "1"
 datafusion = { version = "55", default-features = false, features = ["compression", "parquet", "sql"] }
 # Must match the "futures" version used by datafusion

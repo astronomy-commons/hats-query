@@ -1,3 +1,4 @@
-mod tables;
+mod known_tables;
+mod tap_schema;
 
-pub(crate) use tables::{KnownTables, TapTableConfig};
+pub(crate) use known_tables::{KnownTables, TapTableConfig};

@@ -25,6 +25,29 @@ def test_capabilities(client, vosi_capabilities_schema) -> None:
     vosi_capabilities_schema.validate(response.text)
 
 
+def test_tables(client, vosi_tables_schema) -> None:
+    """Verify that /tap/tables is a valid VOSI tables document listing the configured and TAP_SCHEMA tables"""
+    config = client.app.state.config
+    response = client.get("/tap/tables")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/xml")
+    vosi_tables_schema.validate(response.text)
+    tableset = ElementTree.fromstring(response.text)
+    assert {
+        schema.findtext("name"): {table.findtext("name") for table in schema.findall("table")}
+        for schema in tableset.findall("schema")
+    } == {
+        "small_sky": {table.name for table in config.tap.tables},
+        "TAP_SCHEMA": {
+            "TAP_SCHEMA.schemas",
+            "TAP_SCHEMA.tables",
+            "TAP_SCHEMA.columns",
+            "TAP_SCHEMA.keys",
+            "TAP_SCHEMA.key_columns",
+        },
+    }
+
+
 def test_examples(client) -> None:
     """Verify that /tap/examples lists the configured examples, parsed as XML the way pyvo does"""
     config = client.app.state.config

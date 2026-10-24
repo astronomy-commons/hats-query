@@ -3,6 +3,7 @@ mod common;
 mod engine;
 mod exceptions;
 mod hats;
+mod output;
 mod parquet;
 mod store;
 mod sums;

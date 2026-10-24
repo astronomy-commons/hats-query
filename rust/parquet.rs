@@ -1,6 +1,9 @@
 use crate::adql::{AdqlContext as _, register_adql};
 use crate::exceptions::datafusion_error_to_py_exception;
+use crate::output::{PyAsyncRecordBatchIterator, RecordBatchIterator, SyncableRecordBatchStream};
 use arrow_pyarrow::PyArrowType;
+use async_trait::async_trait;
+use datafusion::common::Result as DFResult;
 use datafusion::common::arrow::array::RecordBatch;
 use datafusion::execution::SendableRecordBatchStream;
 use datafusion::physical_plan::common::spawn_buffered;
@@ -38,8 +41,6 @@ pub(crate) fn read_parquet(py: Python, path_in: String) -> PyResult<Bound<PyAny>
     })
 }
 
-type SyncableRecordBatchStream = Mutex<SendableRecordBatchStream>;
-
 /// Number of partitions executed concurrently ahead of the consumer.
 const PARTITION_WINDOW: usize = 8;
 
@@ -57,15 +58,10 @@ const PARTITION_BUFFER: usize = 2;
 /// table_name : str | None, optional
 ///     The name of the table to query, must be provided if sql is provided.
 #[pyclass]
-pub(crate) struct ParquetReader(Arc<InnerParquetReader>);
-
-struct InnerParquetReader {
-    args: ParquetReaderArgs,
-    stream: OnceCell<SyncableRecordBatchStream>,
-}
+pub(crate) struct ParquetReader(Arc<ParquetReaderArgs>);
 
 struct ParquetReaderArgs {
-    path: PathBuf,
+    path: String,
     query: Option<QueryArgs>,
 }
 
@@ -74,24 +70,33 @@ struct QueryArgs {
     table_name: String,
 }
 
-impl InnerParquetReader {
-    fn new(path: PathBuf, query: Option<QueryArgs>) -> Self {
+/// State of a single iteration over the parquet file.
+struct ParquetRecordBatchIterator {
+    args: Arc<ParquetReaderArgs>,
+    stream: OnceCell<SyncableRecordBatchStream>,
+}
+
+#[async_trait]
+impl RecordBatchIterator for ParquetRecordBatchIterator {
+    async fn get_stream(&self) -> DFResult<&SyncableRecordBatchStream> {
+        self.stream
+            .get_or_try_init(|| async {
+                let stream = Self::initialize_stream(&self.args).await?;
+                Ok(Mutex::new(stream))
+            })
+            .await
+    }
+}
+
+impl ParquetRecordBatchIterator {
+    fn new(args: Arc<ParquetReaderArgs>) -> Self {
         Self {
-            args: ParquetReaderArgs { path, query },
+            args,
             stream: OnceCell::new(),
         }
     }
 
-    async fn get_or_try_init_stream(&self) -> PyResult<&SyncableRecordBatchStream> {
-        self.stream
-            .get_or_try_init(|| async {
-                let stream = Self::initialize_stream(&self.args).await?;
-                Ok::<_, PyErr>(Mutex::new(stream))
-            })
-            .await
-    }
-
-    async fn initialize_stream(args: &ParquetReaderArgs) -> PyResult<SendableRecordBatchStream> {
+    async fn initialize_stream(args: &ParquetReaderArgs) -> DFResult<SendableRecordBatchStream> {
         // Disable work stealing, so each partition reads only its own contiguous file ranges
         // and concatenating partitions in order preserves the file order.
         let mut config = SessionConfig::new();
@@ -102,9 +107,6 @@ impl InnerParquetReader {
         let ctx = SessionContext::new_with_config(config);
         register_adql(&ctx);
 
-        let string_path = args.path.to_str().ok_or_else(|| {
-            pyo3::exceptions::PyValueError::new_err("Invalid path: cannot convert to string")
-        })?;
         let sql = match &args.query {
             Some(query) => query.sql.as_str(),
             None => "SELECT * FROM t",
@@ -114,21 +116,14 @@ impl InnerParquetReader {
             None => "t",
         };
 
-        ctx.register_parquet(table_name, string_path, ParquetReadOptions::new())
-            .await
-            .map_err(datafusion_error_to_py_exception)?;
-        let df = ctx
-            .adql(sql)
-            .await
-            .map_err(datafusion_error_to_py_exception)?;
+        ctx.register_parquet(table_name, &args.path, ParquetReadOptions::new())
+            .await?;
+        let df = ctx.adql(sql).await?;
 
         let schema = df.schema().inner().clone();
 
         // execute the plan and get the partitioned streams
-        let partition_streams = df
-            .execute_stream_partitioned()
-            .await
-            .map_err(datafusion_error_to_py_exception)?;
+        let partition_streams = df.execute_stream_partitioned().await?;
 
         // Process PARTITION_BUFFER partitions in parallel and pre-fetch up to PARTITION_WINDOW
         // partitions ahead of the consumer.
@@ -158,27 +153,19 @@ impl ParquetReader {
                 ));
             }
         };
-        let inner = InnerParquetReader::new(path, query);
-        Ok(Self(Arc::new(inner)))
+        let path = path
+            .to_str()
+            .ok_or_else(|| {
+                pyo3::exceptions::PyValueError::new_err("Invalid path: cannot convert to string")
+            })?
+            .to_owned();
+        Ok(Self(Arc::new(ParquetReaderArgs { path, query })))
     }
 
-    fn __aiter__(slf: PyRef<Self>) -> PyRef<Self> {
-        slf
-    }
-
-    fn __anext__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let inner = Arc::clone(&self.0);
-
-        future_into_py(py, async move {
-            let stream = inner.get_or_try_init_stream().await?;
-            match stream.lock().await.next().await {
-                Some(batch) => Ok(PyArrowType(
-                    batch.map_err(datafusion_error_to_py_exception)?,
-                )),
-                None => Err(PyErr::new::<pyo3::exceptions::PyStopAsyncIteration, _>(
-                    "End of iteration",
-                )),
-            }
-        })
+    /// Returns a new async iterator, each call starts reading from the beginning of the file.
+    fn __aiter__(&self) -> PyAsyncRecordBatchIterator {
+        PyAsyncRecordBatchIterator {
+            inner: Arc::new(ParquetRecordBatchIterator::new(Arc::clone(&self.0))),
+        }
     }
 }

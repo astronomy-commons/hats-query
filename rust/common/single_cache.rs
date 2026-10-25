@@ -1,3 +1,5 @@
+#![allow(dead_code)] // TODO: remove this when the code is used
+
 use datafusion::common::{DataFusionError, Result as DFResult};
 use moka::future::Cache;
 

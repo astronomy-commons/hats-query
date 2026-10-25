@@ -1,3 +1,5 @@
+#![allow(dead_code)] // TODO: remove this when the code is used
+
 use crate::engine::Engine;
 use datafusion::common::{DataFusionError, Result as DFResult};
 use datafusion::object_store::path::Path;

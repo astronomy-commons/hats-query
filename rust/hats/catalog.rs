@@ -1,3 +1,5 @@
+#![allow(dead_code)] // TODO: remove this when the code is used
+
 use crate::common::{SingleCache, parquet_schema_from_bytes};
 use crate::engine::Engine;
 use crate::hats::properties::{CollectionProperties, HatsProperties, IndexProperties, Properties};

@@ -195,7 +195,7 @@ fn space_separated_list_to_map(input: &str) -> BTreeMap<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hats::test_utils::{engine, test_data_path};
+    use crate::tests::util::{engine, test_data_path};
 
     #[tokio::test]
     async fn collection_properties_from_dir() {

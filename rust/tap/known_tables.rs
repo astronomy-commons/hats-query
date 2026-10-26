@@ -1,9 +1,11 @@
+use crate::engine::Engine;
 use crate::hats::Hats;
 use crate::tap::tap_schema::{TAP_SCHEMA, TapSchema};
 use datafusion::catalog::MemorySchemaProvider;
 use datafusion::common::{DataFusionError, Result as DFResult};
 use datafusion::datasource::MemTable;
 use datafusion::prelude::SessionContext;
+use futures_util::future::try_join_all;
 use pyo3::FromPyObject;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -25,9 +27,21 @@ impl KnownTables {
     }
 
     /// Registers TAP_SCHEMA tables describing the known tables in the session's default catalog.
-    pub(crate) fn register_tap_schema_tables(&self, ctx: &SessionContext) -> DFResult<()> {
-        let tap_schema =
-            TapSchema::new(self.tables.iter().map(|(name, hats)| (name.as_str(), hats)))?;
+    pub(crate) async fn register_tap_schema_tables(
+        &self,
+        engine: Arc<Engine>,
+        ctx: &SessionContext,
+    ) -> DFResult<()> {
+        let engine = &engine;
+        let tables = try_join_all(self.tables.iter().map(|(name, hats)| async move {
+            let metadata = hats
+                .metadata(engine.clone())
+                .await
+                .map_err(|e| e.context(format!("Cannot load table '{name}'")))?;
+            Ok::<_, DataFusionError>((name.as_str(), metadata))
+        }))
+        .await?;
+        let tap_schema = TapSchema::new(tables)?;
 
         let catalog_name = ctx.state().config_options().catalog.default_catalog.clone();
         let catalog = ctx.catalog(&catalog_name).ok_or_else(|| {
@@ -59,17 +73,28 @@ pub(crate) struct TapTableConfig {
 mod tests {
     use super::*;
     use crate::adql::AdqlContext;
+    use crate::tests::util::{engine, test_data_path};
+    use datafusion::arrow::array::AsArray;
 
     #[tokio::test]
     async fn register_tap_schema_tables() {
         let known_tables = KnownTables {
             tables: BTreeMap::from([
-                ("a.x".to_string(), Hats::from_path("a/x")),
-                ("b.y".to_string(), Hats::from_path("b/y")),
+                (
+                    "a.x".to_string(),
+                    Hats::from_path(test_data_path("small_sky")),
+                ),
+                (
+                    "b.y".to_string(),
+                    Hats::from_path(test_data_path("small_sky_source")),
+                ),
             ]),
         };
         let ctx = SessionContext::new();
-        known_tables.register_tap_schema_tables(&ctx).unwrap();
+        known_tables
+            .register_tap_schema_tables(engine(), &ctx)
+            .await
+            .unwrap();
 
         let batches = ctx
             .adql("SELECT table_name FROM TAP_SCHEMA.tables")
@@ -86,5 +111,38 @@ mod tests {
                 .await
                 .unwrap();
         }
+
+        let batches = ctx
+            .adql("SELECT column_name FROM TAP_SCHEMA.columns WHERE table_name = 'a.x'")
+            .await
+            .unwrap()
+            .collect()
+            .await
+            .unwrap();
+        let column_names: Vec<_> = batches
+            .iter()
+            .flat_map(|batch| batch.column(0).as_string::<i32>().iter().flatten())
+            .collect();
+        for column in ["id", "ra", "dec", "_healpix_29"] {
+            assert!(
+                column_names.contains(&column),
+                "{column} not in {column_names:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn register_tap_schema_tables_missing_catalog() {
+        let known_tables = KnownTables {
+            tables: BTreeMap::from([(
+                "a.x".to_string(),
+                Hats::from_path(test_data_path("does_not_exist")),
+            )]),
+        };
+        let err = known_tables
+            .register_tap_schema_tables(engine(), &SessionContext::new())
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("Cannot load table 'a.x'"), "{err}");
     }
 }

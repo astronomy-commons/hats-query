@@ -1,8 +1,11 @@
-#![allow(dead_code)] // TODO: remove this when the code is used
-
 use datafusion::common::{DataFusionError, Result as DFResult};
 use moka::future::Cache;
 
+/// Lazily initialized cached value: concurrent callers share a single initialization,
+/// and a failed initialization is not cached, so it is retried on the next call.
+///
+/// It is a wrapper around `moka::future::Cache` with a single key, which implements just a few
+/// methods that are needed for our use case.
 pub(crate) struct SingleCache<T>(Cache<(), T>);
 
 impl<T> SingleCache<T>
@@ -11,18 +14,6 @@ where
 {
     pub(crate) fn new() -> Self {
         Self(Cache::new(1))
-    }
-
-    pub(crate) async fn set(&self, value: T) {
-        self.0.insert((), value).await;
-    }
-
-    pub(crate) async fn get_with<F, Fut>(&self, f: F) -> T
-    where
-        F: FnOnce() -> Fut,
-        Fut: Future<Output = T>,
-    {
-        self.0.get_with((), f()).await
     }
 
     pub(crate) async fn try_get_with<F, Fut>(&self, f: F) -> DFResult<T>

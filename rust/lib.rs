@@ -1,4 +1,5 @@
 mod adql;
+mod arrow_votable;
 mod common;
 mod engine;
 mod exceptions;

@@ -1,5 +1,3 @@
-#![allow(dead_code)] // TODO: remove this when the code is used
-
 use crate::common::{SingleCache, parquet_schema_from_bytes};
 use crate::engine::Engine;
 use crate::hats::properties::{CollectionProperties, HatsProperties, IndexProperties, Properties};
@@ -104,22 +102,48 @@ impl HatsInner {
         }
     }
 
-    /// Metadata of the primary catalog. Indexed columns are the HEALPix column and the columns
-    /// of the collection's index catalogs, if present in the schema.
+    /// Metadata of the primary catalog.
+    ///
+    /// Indexed columns are the HEALPix column and the columns of the collection's index catalogs.
     async fn metadata(&self, engine: Arc<Engine>) -> DFResult<Arc<TableMetadata>> {
         self.metadata
             .get_or_try_init(async || {
                 let schema = self.catalog.schema(engine.clone()).await?;
-                let col_healpix = &self.catalog.properties(engine.clone()).await?.col_healpix;
-                let mut indexed_columns = BTreeSet::from([col_healpix.clone()]);
-                if let Some(collection) = &self.collection {
-                    indexed_columns.extend(collection.indexes(engine).await?.map(String::from));
+                let properties = self.catalog.properties(engine.clone()).await?;
+                let index_columns: BTreeSet<&str> = match &self.collection {
+                    Some(collection) => collection.indexes(engine).await?.collect(),
+                    None => BTreeSet::new(),
+                };
+                let principal_columns: BTreeSet<&str> = match &properties.cols_default {
+                    Some(columns) => columns.iter().map(String::as_str).collect(),
+                    None => {
+                        BTreeSet::from([properties.col_ra.as_str(), properties.col_dec.as_str()])
+                    }
+                };
+
+                let mut metadata = TableMetadata::from_schema(&schema)?;
+                for column in &mut metadata.columns {
+                    let name = column.arrow.name().as_str();
+                    column.indexed = name == properties.col_healpix || index_columns.contains(name);
+                    column.principal = principal_columns.contains(name);
+                    if name == properties.col_ra {
+                        column.vo.unit = Some("deg".to_string());
+                        column.vo.ucd = Some("pos.eq.ra;meta.main".to_string());
+                    } else if name == properties.col_dec {
+                        column.vo.unit = Some("deg".to_string());
+                        column.vo.ucd = Some("pos.eq.dec;meta.main".to_string());
+                    } else if name == properties.col_healpix {
+                        column.vo.ucd = Some("pos.healpix".to_string());
+                        column.vo.description = Some(
+                            format!(
+                                "Nested HEALPix index at order {}",
+                                properties.col_healpix_order
+                            )
+                            .into(),
+                        );
+                    }
                 }
-                indexed_columns.retain(|column| schema.field_with_name(column).is_ok());
-                Ok(Arc::new(TableMetadata {
-                    schema,
-                    indexed_columns,
-                }))
+                Ok(Arc::new(metadata))
             })
             .await
             .cloned()
@@ -136,17 +160,10 @@ struct HatsCollection {
 }
 
 impl HatsCollection {
-    fn new(path: impl Into<Path>) -> Self {
+    async fn new(path: impl Into<Path>, properties: Option<CollectionProperties>) -> Self {
         Self {
             path: path.into(),
-            lazy_inner: OnceCell::new(),
-        }
-    }
-
-    async fn new_with_properties(path: impl Into<Path>, properties: CollectionProperties) -> Self {
-        Self {
-            path: path.into(),
-            lazy_inner: OnceCell::new_with(Some(LazilyInitializedHatsCollection::new(properties))),
+            lazy_inner: OnceCell::new_with(properties.map(LazilyInitializedHatsCollection::new)),
         }
     }
 
@@ -163,7 +180,7 @@ impl HatsCollection {
 
     async fn try_from_dir(engine: Arc<Engine>, path: &Path) -> DFResult<Self> {
         let collection_properties = CollectionProperties::from_dir(engine, path).await?;
-        Ok(Self::new_with_properties(path.clone(), collection_properties).await)
+        Ok(Self::new(path.clone(), Some(collection_properties)).await)
     }
 
     async fn properties(&self, engine: Arc<Engine>) -> DFResult<&CollectionProperties> {
@@ -382,6 +399,7 @@ trait CatalogDir: Sized {
 mod tests {
     use super::*;
     use crate::store::mount_tree::MountConfig;
+    use crate::table_metadata::ColumnMetadata;
     use crate::tests::util::{engine, test_data_path};
 
     fn field_names(schema: &SchemaRef) -> Vec<&str> {
@@ -405,6 +423,27 @@ mod tests {
         (dir, engine)
     }
 
+    /// Names of the columns matching the predicate.
+    fn column_names(
+        metadata: &TableMetadata,
+        predicate: impl Fn(&ColumnMetadata) -> bool,
+    ) -> Vec<&str> {
+        metadata
+            .columns
+            .iter()
+            .filter(|column| predicate(column))
+            .map(|column| column.arrow.name().as_str())
+            .collect()
+    }
+
+    fn column<'a>(metadata: &'a TableMetadata, name: &str) -> &'a ColumnMetadata {
+        metadata
+            .columns
+            .iter()
+            .find(|column| column.arrow.name() == name)
+            .unwrap()
+    }
+
     #[tokio::test]
     async fn discover_catalog() {
         let engine = engine();
@@ -414,14 +453,32 @@ mod tests {
         assert_eq!(inner.catalog.path, test_data_path("small_sky"));
 
         let metadata = hats.metadata(engine).await.unwrap();
-        let names = field_names(&metadata.schema);
+        let names = column_names(&metadata, |_| true);
         for column in ["id", "ra", "dec", "_healpix_29"] {
             assert!(names.contains(&column), "{column} not in {names:?}");
         }
+        assert_eq!(column_names(&metadata, |c| c.indexed), ["_healpix_29"]);
+        // No hats_cols_default in the test catalog, so the coordinates are principal
+        assert_eq!(column_names(&metadata, |c| c.principal), ["ra", "dec"]);
+
+        let ra = &column(&metadata, "ra").vo;
         assert_eq!(
-            metadata.indexed_columns,
-            BTreeSet::from(["_healpix_29".to_string()])
+            (ra.unit.as_deref(), ra.ucd.as_deref()),
+            (Some("deg"), Some("pos.eq.ra;meta.main"))
         );
+        let dec = &column(&metadata, "dec").vo;
+        assert_eq!(
+            (dec.unit.as_deref(), dec.ucd.as_deref()),
+            (Some("deg"), Some("pos.eq.dec;meta.main"))
+        );
+        let healpix = &column(&metadata, "_healpix_29").vo;
+        assert_eq!(healpix.ucd.as_deref(), Some("pos.healpix"));
+        assert_eq!(
+            healpix.description.as_ref().map(ToString::to_string),
+            Some("Nested HEALPix index at order 29".to_string())
+        );
+        let id = &column(&metadata, "id").vo;
+        assert_eq!((id.unit.as_deref(), id.ucd.as_deref()), (None, None));
     }
 
     #[tokio::test]
@@ -446,10 +503,11 @@ mod tests {
         );
 
         let metadata = hats.metadata(engine.clone()).await.unwrap();
-        assert_eq!(metadata.schema, inner.catalog.schema(engine).await.unwrap());
+        let schema = inner.catalog.schema(engine).await.unwrap();
+        assert_eq!(column_names(&metadata, |_| true), field_names(&schema));
         assert_eq!(
-            metadata.indexed_columns,
-            BTreeSet::from(["_healpix_29".to_string(), "id".to_string()])
+            column_names(&metadata, |c| c.indexed),
+            ["_healpix_29", "id"]
         );
     }
 

@@ -3,7 +3,8 @@
 use crate::common::{SingleCache, parquet_schema_from_bytes};
 use crate::engine::Engine;
 use crate::hats::properties::{CollectionProperties, HatsProperties, IndexProperties, Properties};
-use datafusion::arrow::datatypes::{Schema, SchemaRef};
+use crate::table_metadata::TableMetadata;
+use datafusion::arrow::datatypes::Schema;
 use datafusion::common::Result as DFResult;
 use datafusion::error::DataFusionError;
 use datafusion::object_store;
@@ -50,8 +51,8 @@ impl Hats {
             .await
     }
 
-    async fn schema(&self, engine: Arc<Engine>) -> DFResult<SchemaRef> {
-        self.get_inner(engine.clone()).await?.schema(engine).await
+    pub(crate) async fn metadata(&self, engine: Arc<Engine>) -> DFResult<Arc<TableMetadata>> {
+        self.get_inner(engine.clone()).await?.metadata(engine).await
     }
 }
 
@@ -99,8 +100,8 @@ impl HatsInner {
         }
     }
 
-    async fn schema(&self, engine: Arc<Engine>) -> DFResult<SchemaRef> {
-        self.catalog.schema(engine).await
+    async fn metadata(&self, engine: Arc<Engine>) -> DFResult<Arc<TableMetadata>> {
+        self.catalog.metadata(engine).await
     }
 }
 
@@ -196,8 +197,8 @@ struct HatsCatalog {
     path: Path,
     /// Properties of the catalog, lazily initialized.
     properties: OnceCell<HatsProperties>,
-    /// The schema of the catalog, lazily initialized.
-    schema: OnceCell<SchemaRef>,
+    /// The metadata of the catalog, lazily initialized.
+    metadata: OnceCell<Arc<TableMetadata>>,
 }
 
 impl CatalogDir for HatsCatalog {
@@ -207,7 +208,7 @@ impl CatalogDir for HatsCatalog {
         Self {
             path: path.into(),
             properties: OnceCell::new_with(properties),
-            schema: OnceCell::new(),
+            metadata: OnceCell::new(),
         }
     }
 
@@ -219,8 +220,8 @@ impl CatalogDir for HatsCatalog {
         &self.properties
     }
 
-    fn schema_cell(&self) -> &OnceCell<SchemaRef> {
-        &self.schema
+    fn metadata_cell(&self) -> &OnceCell<Arc<TableMetadata>> {
+        &self.metadata
     }
 
     async fn properties_columns(
@@ -245,8 +246,8 @@ struct IndexCatalog {
     path: Path,
     /// Properties of the index catalog, lazily initialized.
     properties: OnceCell<IndexProperties>,
-    /// The schema of the index catalog, lazily initialized.
-    schema: OnceCell<SchemaRef>,
+    /// The metadata of the index catalog, lazily initialized.
+    metadata: OnceCell<Arc<TableMetadata>>,
 }
 
 impl CatalogDir for IndexCatalog {
@@ -256,7 +257,7 @@ impl CatalogDir for IndexCatalog {
         Self {
             path: path.into(),
             properties: OnceCell::new_with(properties),
-            schema: OnceCell::new(),
+            metadata: OnceCell::new(),
         }
     }
 
@@ -268,8 +269,8 @@ impl CatalogDir for IndexCatalog {
         &self.properties
     }
 
-    fn schema_cell(&self) -> &OnceCell<SchemaRef> {
-        &self.schema
+    fn metadata_cell(&self) -> &OnceCell<Arc<TableMetadata>> {
+        &self.metadata
     }
 
     async fn properties_columns(
@@ -284,7 +285,7 @@ impl CatalogDir for IndexCatalog {
 /// A HATS catalog directory, one with "hats.properties" file and "dataset/" subdirectory.
 ///
 /// Implementors provide `new` and access to their lazily initialized fields,
-/// discovery, properties and schema loading are shared.
+/// discovery, properties and metadata loading are shared.
 trait CatalogDir: Sized {
     type Properties: Properties;
 
@@ -295,7 +296,7 @@ trait CatalogDir: Sized {
 
     fn properties_cell(&self) -> &OnceCell<Self::Properties>;
 
-    fn schema_cell(&self) -> &OnceCell<SchemaRef>;
+    fn metadata_cell(&self) -> &OnceCell<Arc<TableMetadata>>;
 
     /// Column names known from the properties, the schema must have all of them.
     async fn properties_columns(&self, engine: Arc<Engine>)
@@ -330,8 +331,8 @@ trait CatalogDir: Sized {
             .await
     }
 
-    async fn schema(&self, engine: Arc<Engine>) -> DFResult<SchemaRef> {
-        self.schema_cell()
+    async fn metadata(&self, engine: Arc<Engine>) -> DFResult<Arc<TableMetadata>> {
+        self.metadata_cell()
             .get_or_try_init(async || {
                 let schema_path = self.path().clone().join(DATASET_DIR).join(SCHEMA_FILE);
                 let bytes = engine.read_bytes(&schema_path).await.map_err(|e| {
@@ -349,7 +350,7 @@ trait CatalogDir: Sized {
                 self.check_schema(engine, &schema).await.map_err(|e| {
                     e.context(format!("Invalid HATS catalog schema file '{schema_path}'"))
                 })?;
-                Ok(schema)
+                Ok(Arc::new(TableMetadata { schema }))
             })
             .await
             .cloned()
@@ -359,8 +360,9 @@ trait CatalogDir: Sized {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hats::test_utils::{engine, test_data_path};
     use crate::store::mount_tree::MountConfig;
+    use crate::tests::util::{engine, test_data_path};
+    use datafusion::arrow::datatypes::SchemaRef;
 
     fn field_names(schema: &SchemaRef) -> Vec<&str> {
         schema.fields().iter().map(|f| f.name().as_str()).collect()
@@ -391,8 +393,8 @@ mod tests {
         assert!(inner.collection.is_none());
         assert_eq!(inner.catalog.path, test_data_path("small_sky"));
 
-        let schema = hats.schema(engine).await.unwrap();
-        let names = field_names(&schema);
+        let metadata = hats.metadata(engine).await.unwrap();
+        let names = field_names(&metadata.schema);
         for column in ["id", "ra", "dec", "_healpix_29"] {
             assert!(names.contains(&column), "{column} not in {names:?}");
         }
@@ -419,8 +421,9 @@ mod tests {
             test_data_path("small_sky_o1_collection/small_sky_order1")
         );
 
-        let schema = hats.schema(engine.clone()).await.unwrap();
-        assert_eq!(schema, inner.catalog.schema(engine).await.unwrap());
+        let metadata = hats.metadata(engine.clone()).await.unwrap();
+        let catalog_metadata = inner.catalog.metadata(engine).await.unwrap();
+        assert_eq!(metadata.schema, catalog_metadata.schema);
     }
 
     #[tokio::test]
@@ -459,15 +462,17 @@ mod tests {
         let properties = catalog.properties(engine.clone()).await.unwrap();
         assert_eq!(properties.hats_index_column, "id");
 
-        let schema = catalog.schema(engine).await.unwrap();
-        let names = field_names(&schema);
+        let metadata = catalog.metadata(engine).await.unwrap();
+        let names = field_names(&metadata.schema);
         assert!(names.contains(&"id"), "id not in {names:?}");
     }
 
     #[tokio::test]
     async fn index_catalog_schema_missing_file() {
         let catalog = IndexCatalog::new(test_data_path("does_not_exist"), None);
-        let err = catalog.schema(engine()).await.unwrap_err();
+        let Err(err) = catalog.metadata(engine()).await else {
+            panic!("expected an error");
+        };
         assert!(
             err.to_string()
                 .contains("Cannot read HATS catalog schema file"),
@@ -478,7 +483,9 @@ mod tests {
     #[tokio::test]
     async fn schema_missing_file() {
         let catalog = HatsCatalog::new(test_data_path("does_not_exist"), None);
-        let err = catalog.schema(engine()).await.unwrap_err();
+        let Err(err) = catalog.metadata(engine()).await else {
+            panic!("expected an error");
+        };
         assert!(
             err.to_string()
                 .contains("Cannot read HATS catalog schema file"),
@@ -494,12 +501,14 @@ mod tests {
             "small_sky",
         );
         let catalog = HatsCatalog::new(Path::from(""), None);
-        let err = catalog.schema(engine).await.unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("Columns 'missing_dec', 'missing_ra' from HATS properties"),
-            "{err}"
-        );
+        match catalog.metadata(engine).await {
+            Ok(_) => panic!("expected an error"),
+            Err(err) => assert!(
+                err.to_string()
+                    .contains("Columns 'missing_dec', 'missing_ra' from HATS properties"),
+                "{err}"
+            ),
+        }
     }
 
     #[tokio::test]
@@ -510,11 +519,13 @@ mod tests {
             "small_sky_o1_collection/small_sky_order1_id_index",
         );
         let catalog = IndexCatalog::new(Path::from(""), None);
-        let err = catalog.schema(engine).await.unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("Columns 'missing' from HATS properties"),
-            "{err}"
-        );
+        match catalog.metadata(engine).await {
+            Ok(_) => panic!("expected an error"),
+            Err(err) => assert!(
+                err.to_string()
+                    .contains("Columns 'missing' from HATS properties"),
+                "{err}"
+            ),
+        }
     }
 }

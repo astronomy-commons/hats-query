@@ -17,7 +17,7 @@ datafusion = { version = "55", default-features = false, features = ["compressio
 # Must match the "futures" version used by datafusion
 futures-util = "0.3"
 java-properties = "2"
-itertools = { version = "0.15", default-features = false }
+itertools = { version = "0.15", default-features = false, features = ["use_std"] }
 moka = { version = "0.12", default-features = false, features = ["future"]  }
 # Must use the same "object_store" version as datafusion
 object_store_opendal = { version = "0.58" , default-features = false }

@@ -54,6 +54,12 @@ def test_tables(client, vosi_tables_schema) -> None:
     ra = columns["small_sky.object"]["ra"]
     assert ra.findtext("dataType") == "double"
     assert ra.get("std") is None
+    indexed = {
+        name
+        for name, column in columns["small_sky.object"].items()
+        if "indexed" in [flag.text for flag in column.findall("flag")]
+    }
+    assert indexed == {"id", '"_healpix_29"'}
     table_name = columns["TAP_SCHEMA.columns"]["table_name"]
     assert table_name.get("std") == "true"
     data_type = table_name.find("dataType")

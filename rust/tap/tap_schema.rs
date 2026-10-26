@@ -5,6 +5,7 @@ use datafusion::arrow::array::{ArrayRef, Int32Array, RecordBatch, StringArray};
 use datafusion::arrow::datatypes::{DataType, Field, Schema};
 use datafusion::common::{DataFusionError, Result as DFResult};
 use itertools::Itertools;
+use std::collections::BTreeSet;
 use std::sync::{Arc, LazyLock};
 
 pub(super) const TAP_SCHEMA: &str = "TAP_SCHEMA";
@@ -19,6 +20,7 @@ static TAP_SCHEMA_TABLES: LazyLock<[(&str, Arc<TableMetadata>); 5]> = LazyLock::
     let metadata = |schema| {
         Arc::new(TableMetadata {
             schema: Arc::new(schema),
+            indexed_columns: BTreeSet::new(),
         })
     };
     [
@@ -160,6 +162,7 @@ fn columns_table(tables: &[(&str, Arc<TableMetadata>)]) -> DFResult<RecordBatch>
     let mut datatype = Vec::new();
     let mut arraysize = Vec::new();
     let mut xtype = Vec::new();
+    let mut indexed = Vec::new();
     let mut std = Vec::new();
     let mut column_index = Vec::new();
     for (name, metadata) in tables {
@@ -172,6 +175,7 @@ fn columns_table(tables: &[(&str, Arc<TableMetadata>)]) -> DFResult<RecordBatch>
             datatype.push(vo_field.datatype.to_string());
             arraysize.push(vo_field.arraysize.map(|size| size.to_string()));
             xtype.push(vo_field.xtype);
+            indexed.push(i32::from(metadata.indexed_columns.contains(field.name())));
             std.push(i32::from(is_std));
             column_index.push(index as i32);
         }
@@ -189,7 +193,7 @@ fn columns_table(tables: &[(&str, Arc<TableMetadata>)]) -> DFResult<RecordBatch>
         Arc::new(StringArray::new_null(n)),
         Arc::new(StringArray::new_null(n)),
         Arc::new(StringArray::new_null(n)),
-        Arc::new(Int32Array::from(vec![0; n])),
+        Arc::new(Int32Array::from(indexed)),
         Arc::new(Int32Array::from(vec![1; n])),
         Arc::new(Int32Array::from(std)),
         Arc::new(Int32Array::from(column_index)),
@@ -256,6 +260,7 @@ mod tests {
     fn metadata(fields: Vec<Field>) -> Arc<TableMetadata> {
         Arc::new(TableMetadata {
             schema: Arc::new(Schema::new(fields)),
+            indexed_columns: BTreeSet::new(),
         })
     }
 
@@ -363,6 +368,20 @@ mod tests {
             ints(&batch, "column_index"),
             [Some(0), Some(1), Some(2), Some(0), Some(1)]
         );
+    }
+
+    #[test]
+    fn columns_indexed() {
+        let known = Arc::new(TableMetadata {
+            schema: Arc::new(Schema::new(vec![
+                Field::new("_healpix_29", DataType::Int64, false),
+                Field::new("id", DataType::Int64, false),
+                Field::new("ra", DataType::Float64, false),
+            ])),
+            indexed_columns: BTreeSet::from(["_healpix_29".to_string(), "id".to_string()]),
+        });
+        let batch = columns_table(&[("a.x", known)]).unwrap();
+        assert_eq!(ints(&batch, "indexed"), [Some(1), Some(1), Some(0)]);
     }
 
     #[test]

@@ -13,29 +13,37 @@ contact = "ops@example.org"
 level = "info"
 
 # Directories this service reads, maps "source" URL to "path" endpoint.
+# Relative sources are resolved against this file's directory: these are the example
+# catalogs from the hats git submodule, fetch it with `git submodule update --init`.
 [[mount]]
 path = "/hats"
-source = "/data/hats"
-
-[[mount]]
-path = "/staging"
-source = "staging"
+source = "tests/data/git-submodules/hats/tests/data"
 
 # HATS catalogs published over TAP
 [[tap.table]]
-name = "gaia_dr3.gaia_source"
-path = "/hats/gaia_dr3"
-
-# Queries offered at /tap/examples
-[[tap.table.example]]
-name = "Bright stars near M13"
-query = """
-SELECT TOP 10 source_id, ra, dec, phot_g_mean_mag
-FROM gaia_dr3.gaia_source
-WHERE phot_g_mean_mag < 15
-  AND 1 = CONTAINS(POINT(ra, dec), CIRCLE(250.42, 36.46, 0.1))
-"""
+name = "small_sky.object"
+# A collection, with an index on "id"
+path = "/hats/small_sky_o1_collection"
 
 [[tap.table]]
-name = "ztf.dr24_lc"
-path = "/hats/ztf_dr24_lc"
+name = "small_sky.source"
+path = "/hats/small_sky_source"
+
+# Queries offered at /tap/examples, "tables" optionally lists the tables each is about
+[[tap.example]]
+name = "Objects in a cone"
+tables = ["small_sky.object"]
+query = """
+SELECT id, ra, dec
+FROM small_sky.object
+WHERE 1 = CONTAINS(POINT(ra, dec), CIRCLE(315.0, -45.0, 5.0))
+"""
+
+[[tap.example]]
+name = "Object by id"
+tables = ["small_sky.object"]
+query = """
+SELECT id, ra, dec
+FROM small_sky.object
+WHERE id = 707
+"""

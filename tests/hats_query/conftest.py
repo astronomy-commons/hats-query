@@ -9,8 +9,15 @@ import xmlschema
 from fastapi.testclient import TestClient
 
 from hats_query.server import create_app
+from hats_query.server.config import Config
 
-IVOA_SCHEMAS_DIR = Path(__file__).parent.parent / "data" / "ivoa_schemas"
+IVOA_SCHEMAS_DIR = Path(__file__).parent.parent / "data" / "ivoa-schemas"
+
+
+@pytest.fixture(scope="session")
+def example_config_path() -> Path:
+    """The example config file, hats-query.example.toml"""
+    return Path(__file__).parents[2] / "hats-query.example.toml"
 
 
 @pytest.fixture(scope="session")
@@ -36,18 +43,28 @@ def vosi_capabilities_schema() -> xmlschema.XMLSchema:
 
 
 @pytest.fixture
-def client() -> TestClient:
-    """Test client for a fresh hats-query application"""
-    return TestClient(create_app())
+def client(example_config_path) -> TestClient:
+    """Test client for a fresh hats-query application with the example config"""
+    return TestClient(create_app(Config.load(example_config_path)))
 
 
 @pytest.fixture(scope="module")
-def live_server_url():
-    """Base URL of a hats-query server running in a subprocess"""
+def live_server_url(example_config_path):
+    """Base URL of a hats-query server running in a subprocess with the example config"""
     port = "8321"
     url = f"http://127.0.0.1:{port}"
     process = subprocess.Popen(
-        [sys.executable, "-m", "hats_query", "--server.port", str(port), "--log.level", "warning"]
+        [
+            sys.executable,
+            "-m",
+            "hats_query",
+            "--config",
+            str(example_config_path),
+            "--server.port",
+            str(port),
+            "--log.level",
+            "warning",
+        ]
     )
     for _ in range(100):
         try:

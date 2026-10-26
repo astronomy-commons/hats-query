@@ -149,8 +149,8 @@ mod tests {
 
         /// Sorted paths of the Lyonetia IVOA XML files
         fn get_xml_paths() -> Vec<PathBuf> {
-            let ivoa_dir =
-                Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/lyonetia/src/adql/ivoa");
+            let ivoa_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/data/git-submodules/lyonetia/src/adql/ivoa");
             let mut paths: Vec<_> = std::fs::read_dir(&ivoa_dir)
                 .expect("Failed to read Lyonetia IVOA directory")
                 .map(|entry| {
@@ -159,6 +159,11 @@ mod tests {
                 })
                 .filter(|path| path.extension().filter(|&ext| ext == "xml").is_some())
                 .collect();
+            assert!(
+                !paths.is_empty(),
+                "No Lyonetia XML files found in {}, fetch the submodule with `git submodule update --init`",
+                ivoa_dir.display()
+            );
             paths.sort_unstable();
             paths
         }

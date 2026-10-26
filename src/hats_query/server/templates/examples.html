@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8"/>
+  <title>hats-query ADQL examples</title>
+</head>
+<body vocab="http://www.ivoa.net/rdf/examples#">
+  <h1>ADQL examples</h1>
+{%- for example in examples %}
+{%- set id = "example-" ~ loop.index %}
+  <div id="{{ id }}" resource="#{{ id }}" typeof="example">
+    <h2 property="name">{{ example.name }}</h2>
+{%- if example.tables %}
+    <p>Tables:
+{%- for table in example.tables %} <span property="table">{{ table }}</span>{% if not loop.last %},{% endif %}{% endfor -%}
+    </p>
+{%- endif %}
+    <pre property="query">{{ example.query.strip() }}</pre>
+  </div>
+{%- endfor %}
+</body>
+</html>

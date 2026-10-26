@@ -47,6 +47,18 @@ def test_tables(client, vosi_tables_schema) -> None:
         },
     }
 
+    columns = {
+        table.findtext("name"): {column.findtext("name"): column for column in table.findall("column")}
+        for table in tableset.iter("table")
+    }
+    ra = columns["small_sky.object"]["ra"]
+    assert ra.findtext("dataType") == "double"
+    assert ra.get("std") is None
+    table_name = columns["TAP_SCHEMA.columns"]["table_name"]
+    assert table_name.get("std") == "true"
+    data_type = table_name.find("dataType")
+    assert (data_type.text, data_type.get("arraysize")) == ("char", "*")
+
 
 def test_examples(client) -> None:
     """Verify that /tap/examples lists the configured examples, parsed as XML the way pyvo does"""

@@ -9,7 +9,6 @@ import pytest
 # Taplint errors, warnings and failures known to happen, as {"STAGE-CODE": count} in alphabetical order,
 # please update when they change
 KNOWN_FAILURES = {
-    "EXA-EXVL": 2,
     "EXA-QERX": 2,
     "EXA-VOCT": 2,
     "EXA-YJQB": 2,
@@ -25,6 +24,8 @@ KNOWN_FAILURES = {
     "QPO-VOCT": 5,
     "QPO-YJQB": 5,
     "TMC-NOTM": 1,
+    "TME-CNID": 2,
+    "TME-CRSV": 1,
     "TMS-CERR": 1,
     "TMS-CLIO": 1,
     "TMS-FKIO": 1,

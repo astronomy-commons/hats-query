@@ -123,12 +123,45 @@ mod tests {
             .iter()
             .flat_map(|batch| batch.column(0).as_string::<i32>().iter().flatten())
             .collect();
-        for column in ["id", "ra", "dec", "_healpix_29"] {
+        for column in ["id", "ra", "dec", r#""_healpix_29""#] {
             assert!(
                 column_names.contains(&column),
                 "{column} not in {column_names:?}"
             );
         }
+    }
+
+    /// Column names listed in TAP_SCHEMA.columns can be used in ADQL queries as they are.
+    #[tokio::test]
+    async fn listed_column_names_are_queryable() {
+        let known_tables = KnownTables {
+            tables: BTreeMap::new(),
+        };
+        let ctx = SessionContext::new();
+        known_tables
+            .register_tap_schema_tables(engine(), &ctx)
+            .await
+            .unwrap();
+
+        let batches = ctx
+            .adql(
+                r#"SELECT column_name FROM TAP_SCHEMA.columns
+                WHERE table_name = 'TAP_SCHEMA.columns' AND column_name = '"size"'"#,
+            )
+            .await
+            .unwrap()
+            .collect()
+            .await
+            .unwrap();
+        let num_rows: usize = batches.iter().map(|b| b.num_rows()).sum();
+        assert_eq!(num_rows, 1);
+
+        ctx.adql(r#"SELECT "size" FROM TAP_SCHEMA.columns"#)
+            .await
+            .unwrap()
+            .collect()
+            .await
+            .unwrap();
     }
 
     #[tokio::test]

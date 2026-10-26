@@ -24,8 +24,6 @@ KNOWN_FAILURES = {
     "QPO-VOCT": 5,
     "QPO-YJQB": 5,
     "TMC-NOTM": 1,
-    "TME-CNID": 2,
-    "TME-CRSV": 1,
     "TMS-CERR": 1,
     "TMS-CLIO": 1,
     "TMS-FKIO": 1,

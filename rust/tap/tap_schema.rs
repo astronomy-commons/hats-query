@@ -1,3 +1,4 @@
+use crate::adql::delimit_if_needed;
 use crate::arrow_votable::vo_field;
 use crate::table_metadata::TableMetadata;
 use datafusion::arrow::array::{ArrayRef, Int32Array, RecordBatch, StringArray};
@@ -167,7 +168,7 @@ fn columns_table(tables: &[(&str, Arc<TableMetadata>)]) -> DFResult<RecordBatch>
             let vo_field = vo_field(field)
                 .map_err(|e| e.context(format!("Column '{}' of table '{name}'", field.name())))?;
             table_name.push(*name);
-            column_name.push(vo_field.name);
+            column_name.push(delimit_if_needed(&vo_field.name).into_owned());
             datatype.push(vo_field.datatype.to_string());
             arraysize.push(vo_field.arraysize.map(|size| size.to_string()));
             xtype.push(vo_field.xtype);
@@ -309,25 +310,59 @@ mod tests {
                 DataType::Timestamp(TimeUnit::Microsecond, None),
                 true,
             ),
+            Field::new("_healpix_29", DataType::Int64, false),
         ]);
-        let standard = metadata(vec![Field::new("name", DataType::Utf8, false)]);
+        let standard = metadata(vec![
+            Field::new("name", DataType::Utf8, false),
+            Field::new("size", DataType::Int32, true),
+        ]);
         let batch = columns_table(&[("a.x", known), ("TAP_SCHEMA.t", standard)]).unwrap();
         assert_eq!(
             strings(&batch, "table_name"),
-            [Some("a.x"), Some("a.x"), Some("TAP_SCHEMA.t")]
+            [
+                Some("a.x"),
+                Some("a.x"),
+                Some("a.x"),
+                Some("TAP_SCHEMA.t"),
+                Some("TAP_SCHEMA.t")
+            ]
         );
         assert_eq!(
             strings(&batch, "column_name"),
-            [Some("ra"), Some("obs_time"), Some("name")]
+            [
+                Some("ra"),
+                Some("obs_time"),
+                Some(r#""_healpix_29""#),
+                Some("name"),
+                Some(r#""size""#)
+            ]
         );
         assert_eq!(
             strings(&batch, "datatype"),
-            [Some("double"), Some("char"), Some("char")]
+            [
+                Some("double"),
+                Some("char"),
+                Some("long"),
+                Some("char"),
+                Some("int")
+            ]
         );
-        assert_eq!(strings(&batch, "arraysize"), [None, Some("*"), Some("*")]);
-        assert_eq!(strings(&batch, "xtype"), [None, Some("timestamp"), None]);
-        assert_eq!(ints(&batch, "std"), [Some(0), Some(0), Some(1)]);
-        assert_eq!(ints(&batch, "column_index"), [Some(0), Some(1), Some(0)]);
+        assert_eq!(
+            strings(&batch, "arraysize"),
+            [None, Some("*"), None, Some("*"), None]
+        );
+        assert_eq!(
+            strings(&batch, "xtype"),
+            [None, Some("timestamp"), None, None, None]
+        );
+        assert_eq!(
+            ints(&batch, "std"),
+            [Some(0), Some(0), Some(0), Some(1), Some(1)]
+        );
+        assert_eq!(
+            ints(&batch, "column_index"),
+            [Some(0), Some(1), Some(2), Some(0), Some(1)]
+        );
     }
 
     #[test]

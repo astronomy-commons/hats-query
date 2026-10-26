@@ -1,11 +1,9 @@
 use crate::adql::delimit_if_needed;
-use crate::arrow_votable::vo_field;
 use crate::table_metadata::TableMetadata;
 use datafusion::arrow::array::{ArrayRef, Int32Array, RecordBatch, StringArray};
 use datafusion::arrow::datatypes::{DataType, Field, Schema};
 use datafusion::common::{DataFusionError, Result as DFResult};
 use itertools::Itertools;
-use std::collections::BTreeSet;
 use std::sync::{Arc, LazyLock};
 
 pub(super) const TAP_SCHEMA: &str = "TAP_SCHEMA";
@@ -18,10 +16,12 @@ const KEY_COLUMNS: &str = "TAP_SCHEMA.key_columns";
 /// ("TAP_SCHEMA.table", metadata) pairs of the TAP_SCHEMA tables, which describe themselves.
 static TAP_SCHEMA_TABLES: LazyLock<[(&str, Arc<TableMetadata>); 5]> = LazyLock::new(|| {
     let metadata = |schema| {
-        Arc::new(TableMetadata {
-            schema: Arc::new(schema),
-            indexed_columns: BTreeSet::new(),
-        })
+        let mut metadata = TableMetadata::from_schema(&schema)
+            .expect("TAP_SCHEMA columns must be representable in VOTable");
+        for column in &mut metadata.columns {
+            column.principal = true;
+        }
+        Arc::new(metadata)
     };
     [
         (SCHEMAS, metadata(schemas_schema())),
@@ -162,20 +162,29 @@ fn columns_table(tables: &[(&str, Arc<TableMetadata>)]) -> DFResult<RecordBatch>
     let mut datatype = Vec::new();
     let mut arraysize = Vec::new();
     let mut xtype = Vec::new();
+    let mut description = Vec::new();
+    let mut utype = Vec::new();
+    let mut unit = Vec::new();
+    let mut ucd = Vec::new();
     let mut indexed = Vec::new();
+    let mut principal = Vec::new();
     let mut std = Vec::new();
     let mut column_index = Vec::new();
     for (name, metadata) in tables {
         let is_std = is_tap_schema(name)?;
-        for (index, field) in metadata.schema.fields().iter().enumerate() {
-            let vo_field = vo_field(field)
-                .map_err(|e| e.context(format!("Column '{}' of table '{name}'", field.name())))?;
+        for (index, column) in metadata.columns.iter().enumerate() {
+            let vo = &column.vo;
             table_name.push(*name);
-            column_name.push(delimit_if_needed(&vo_field.name).into_owned());
-            datatype.push(vo_field.datatype.to_string());
-            arraysize.push(vo_field.arraysize.map(|size| size.to_string()));
-            xtype.push(vo_field.xtype);
-            indexed.push(i32::from(metadata.indexed_columns.contains(field.name())));
+            column_name.push(delimit_if_needed(&vo.name).into_owned());
+            datatype.push(vo.datatype.to_string());
+            arraysize.push(vo.arraysize.as_ref().map(ToString::to_string));
+            xtype.push(vo.xtype.clone());
+            description.push(vo.description.as_ref().map(ToString::to_string));
+            utype.push(vo.utype.clone());
+            unit.push(vo.unit.clone());
+            ucd.push(vo.ucd.clone());
+            indexed.push(i32::from(column.indexed));
+            principal.push(i32::from(column.principal));
             std.push(i32::from(is_std));
             column_index.push(index as i32);
         }
@@ -189,12 +198,12 @@ fn columns_table(tables: &[(&str, Arc<TableMetadata>)]) -> DFResult<RecordBatch>
         Arc::new(StringArray::from(arraysize)),
         Arc::new(StringArray::from(xtype)),
         Arc::new(Int32Array::new_null(n)),
-        Arc::new(StringArray::new_null(n)),
-        Arc::new(StringArray::new_null(n)),
-        Arc::new(StringArray::new_null(n)),
-        Arc::new(StringArray::new_null(n)),
+        Arc::new(StringArray::from(description)),
+        Arc::new(StringArray::from(utype)),
+        Arc::new(StringArray::from(unit)),
+        Arc::new(StringArray::from(ucd)),
         Arc::new(Int32Array::from(indexed)),
-        Arc::new(Int32Array::from(vec![1; n])),
+        Arc::new(Int32Array::from(principal)),
         Arc::new(Int32Array::from(std)),
         Arc::new(Int32Array::from(column_index)),
     ];
@@ -258,10 +267,7 @@ mod tests {
     use datafusion::arrow::datatypes::{Int32Type, TimeUnit};
 
     fn metadata(fields: Vec<Field>) -> Arc<TableMetadata> {
-        Arc::new(TableMetadata {
-            schema: Arc::new(Schema::new(fields)),
-            indexed_columns: BTreeSet::new(),
-        })
+        Arc::new(TableMetadata::from_schema(&Schema::new(fields)).unwrap())
     }
 
     fn strings<'b>(batch: &'b RecordBatch, column: &str) -> Vec<Option<&'b str>> {
@@ -371,26 +377,34 @@ mod tests {
     }
 
     #[test]
-    fn columns_indexed() {
-        let known = Arc::new(TableMetadata {
-            schema: Arc::new(Schema::new(vec![
-                Field::new("_healpix_29", DataType::Int64, false),
-                Field::new("id", DataType::Int64, false),
-                Field::new("ra", DataType::Float64, false),
-            ])),
-            indexed_columns: BTreeSet::from(["_healpix_29".to_string(), "id".to_string()]),
-        });
-        let batch = columns_table(&[("a.x", known)]).unwrap();
-        assert_eq!(ints(&batch, "indexed"), [Some(1), Some(1), Some(0)]);
-    }
+    fn columns_flags_and_annotations() {
+        let mut known = TableMetadata::from_schema(&Schema::new(vec![
+            Field::new("_healpix_29", DataType::Int64, false),
+            Field::new("id", DataType::Int64, false),
+            Field::new("ra", DataType::Float64, false),
+        ]))
+        .unwrap();
+        known.columns[0].indexed = true;
+        known.columns[1].indexed = true;
+        known.columns[2].principal = true;
+        let ra = &mut known.columns[2].vo;
+        ra.unit = Some("deg".to_string());
+        ra.ucd = Some("pos.eq.ra".to_string());
+        ra.utype = Some("stc:AstroCoords.Position2D.Value2.C1".to_string());
+        ra.description = Some("Right ascension".into());
 
-    #[test]
-    fn columns_unrepresentable() {
-        let known = metadata(vec![Field::new("nothing", DataType::Null, true)]);
-        let err = columns_table(&[("a.x", known)]).unwrap_err();
-        assert!(
-            err.to_string().contains("Column 'nothing' of table 'a.x'"),
-            "{err}"
+        let batch = columns_table(&[("a.x", Arc::new(known))]).unwrap();
+        assert_eq!(ints(&batch, "indexed"), [Some(1), Some(1), Some(0)]);
+        assert_eq!(ints(&batch, "principal"), [Some(0), Some(0), Some(1)]);
+        assert_eq!(strings(&batch, "unit"), [None, None, Some("deg")]);
+        assert_eq!(strings(&batch, "ucd"), [None, None, Some("pos.eq.ra")]);
+        assert_eq!(
+            strings(&batch, "utype"),
+            [None, None, Some("stc:AstroCoords.Position2D.Value2.C1")]
+        );
+        assert_eq!(
+            strings(&batch, "description"),
+            [None, None, Some("Right ascension")]
         );
     }
 
@@ -415,9 +429,13 @@ mod tests {
         );
         let described_columns: usize = TAP_SCHEMA_TABLES
             .iter()
-            .map(|(_name, metadata)| metadata.schema.fields().len())
+            .map(|(_name, metadata)| metadata.columns.len())
             .sum();
         assert_eq!(tap_schema.columns.num_rows(), 1 + described_columns);
+        // TAP_SCHEMA columns are all principal, the known table column isn't
+        let principal = ints(&tap_schema.columns, "principal");
+        assert_eq!(principal[0], Some(0));
+        assert!(principal[1..].iter().all(|p| *p == Some(1)));
     }
 
     #[test]

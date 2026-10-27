@@ -1,8 +1,9 @@
 use crate::adql::{AdqlContext as _, register_adql};
 use crate::exceptions::datafusion_error_to_py_exception;
 use crate::output::{PyAsyncRecordBatchIterator, RecordBatchIterator, SyncableRecordBatchStream};
+use crate::store::location::Location;
 use crate::store::mount_tree::{MountConfig, MountTree};
-use crate::store::store_path::StorePath;
+use crate::store::storage::Storage;
 use crate::tap::{KnownTables, TapTableConfig};
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -21,8 +22,8 @@ pub(crate) struct PyEngine {
 
 /// A query engine reading from the virtual file system.
 pub(crate) struct Engine {
-    /// The virtual file system.
-    mounts: MountTree,
+    /// The storage system: the mount tree and external locations.
+    storage: Storage,
     tables: KnownTables,
     /// DataFusion session with ADQL functions and TAP tables, lazily initialized.
     ctx: OnceCell<SessionContext>,
@@ -59,10 +60,10 @@ impl Engine {
         mount_configs: Vec<MountConfig>,
         tap_table_configs: Vec<TapTableConfig>,
     ) -> DFResult<Self> {
-        let mounts = MountTree::from_mount_configs(mount_configs)?;
-        let tables = KnownTables::from_tap_table_configs(tap_table_configs);
+        let storage = Storage::new(MountTree::from_mount_configs(mount_configs)?);
+        let tables = KnownTables::from_tap_table_configs(&storage, tap_table_configs)?;
         Ok(Self {
-            mounts,
+            storage,
             tables,
             ctx: OnceCell::new(),
         })
@@ -73,22 +74,19 @@ impl Engine {
             .get_or_try_init(async || {
                 let ctx = SessionContext::new();
                 register_adql(&ctx);
-                self.mounts.register_object_stores(&ctx);
-                self.tables
-                    .register_tap_schema_tables(self.clone(), &ctx)
-                    .await?;
+                self.storage.register_object_stores(&ctx);
+                self.tables.register_tap_schema_tables(&ctx).await?;
                 Ok(ctx)
             })
             .await
     }
 
-    /// Finds the mount containing `path`, see `MountTree::resolve`.
-    pub(crate) fn resolve(&self, path: &Path) -> DFResult<StorePath> {
-        self.mounts.resolve(path)
-    }
-
+    /// Reads the whole object at `path`, a server path inside the mounts.
     pub(crate) async fn read_bytes(&self, path: &Path) -> DFResult<Bytes> {
-        self.resolve(path)?.read_bytes().await
+        self.storage
+            .resolve(&Location::Mounted(path.clone()))?
+            .read_bytes()
+            .await
     }
 }
 

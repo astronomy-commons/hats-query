@@ -1,11 +1,9 @@
-use crate::engine::Engine;
+use crate::store::store_path::StorePath;
 use datafusion::common::{DataFusionError, Result as DFResult};
 use datafusion::object_store;
-use datafusion::object_store::path::Path;
 use itertools::Itertools;
 use std::collections::{BTreeMap, HashMap};
 use std::io::Read;
-use std::sync::Arc;
 
 const COLLECTION_PROPERTIES_FILE: &str = "collection.properties";
 const HATS_PROPERTIES_FILE: &str = "hats.properties";
@@ -26,18 +24,18 @@ pub(super) trait Properties: Sized {
 
     /// Loads the first existing candidate file, if none exists the root error is object store's
     /// NotFound, so callers can tell it apart from read and parse errors.
-    async fn from_dir(engine: Arc<Engine>, path: &Path) -> DFResult<Self> {
+    async fn from_dir(dir: &StorePath) -> DFResult<Self> {
         let mut not_found = None;
         for file_name in Self::FILE_NAMES {
-            let file_path = path.clone().join(*file_name);
-            match engine.read_bytes(&file_path).await {
+            let file = dir.join(*file_name);
+            match file.read_bytes().await {
                 Ok(bytes) => return Self::from_reader(bytes.as_ref()),
                 Err(DataFusionError::ObjectStore(err))
                     if matches!(*err, object_store::Error::NotFound { .. }) =>
                 {
                     not_found = Some(err)
                 }
-                Err(err) => return Err(err.context(format!("Cannot read '{file_path}'"))),
+                Err(err) => return Err(err.context(format!("Cannot read '{}'", file.url()))),
             }
         }
         let message = format!(
@@ -46,7 +44,7 @@ pub(super) trait Properties: Sized {
                 .iter()
                 .map(|f| format!("'{f}'"))
                 .join(" or "),
-            path
+            dir.url()
         );
         Err(match not_found {
             Some(err) => DataFusionError::ObjectStore(err).context(message),
@@ -219,14 +217,12 @@ fn space_separated_list_to_map(input: &str) -> DFResult<BTreeMap<String, String>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tests::util::{engine, test_data_path};
+    use crate::tests::util::test_data_location;
 
     #[tokio::test]
     async fn collection_properties_from_dir() {
-        let path = test_data_path("small_sky_o1_collection");
-        let properties = CollectionProperties::from_dir(engine(), &path)
-            .await
-            .unwrap();
+        let dir = test_data_location("small_sky_o1_collection");
+        let properties = CollectionProperties::from_dir(&dir).await.unwrap();
         assert_eq!(properties.hats_primary_table_url, "small_sky_order1");
         assert_eq!(
             properties.all_indexes,
@@ -236,18 +232,14 @@ mod tests {
 
     #[tokio::test]
     async fn collection_properties_missing_file() {
-        let path = test_data_path("small_sky");
-        assert!(
-            CollectionProperties::from_dir(engine(), &path)
-                .await
-                .is_err()
-        );
+        let dir = test_data_location("small_sky");
+        assert!(CollectionProperties::from_dir(&dir).await.is_err());
     }
 
     #[tokio::test]
     async fn hats_properties_from_dir() {
-        let path = test_data_path("small_sky");
-        let properties = HatsProperties::from_dir(engine(), &path).await.unwrap();
+        let dir = test_data_location("small_sky");
+        let properties = HatsProperties::from_dir(&dir).await.unwrap();
         assert_eq!(properties.nrows, Some(131));
         assert_eq!(properties.col_ra, "ra");
         assert_eq!(properties.col_dec, "dec");
@@ -259,8 +251,8 @@ mod tests {
 
     #[tokio::test]
     async fn index_properties_from_dir() {
-        let path = test_data_path("small_sky_o1_collection/small_sky_order1_id_index");
-        let properties = IndexProperties::from_dir(engine(), &path).await.unwrap();
+        let dir = test_data_location("small_sky_o1_collection/small_sky_order1_id_index");
+        let properties = IndexProperties::from_dir(&dir).await.unwrap();
         assert_eq!(
             properties.hats_primary_table_url,
             "small_sky_o1_collection/small_sky_order1"
@@ -271,8 +263,8 @@ mod tests {
 
     #[tokio::test]
     async fn hats_properties_missing_file() {
-        let path = test_data_path("small_sky_o1_collection");
-        match HatsProperties::from_dir(engine(), &path).await {
+        let dir = test_data_location("small_sky_o1_collection");
+        match HatsProperties::from_dir(&dir).await {
             Ok(_) => panic!("expected an error"),
             Err(err) => assert!(
                 matches!(

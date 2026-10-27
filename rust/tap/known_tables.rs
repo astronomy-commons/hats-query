@@ -1,9 +1,9 @@
-use crate::hats::Hats;
+use crate::hats::{Hats, HatsTableProvider};
 use crate::store::location::Location;
 use crate::store::storage::Storage;
 use crate::tap::tap_schema::{TAP_SCHEMA, TapSchema};
 use datafusion::catalog::MemorySchemaProvider;
-use datafusion::common::{DataFusionError, Result as DFResult};
+use datafusion::common::{DataFusionError, Result as DFResult, TableReference};
 use datafusion::datasource::MemTable;
 use datafusion::object_store::path::Path;
 use datafusion::prelude::SessionContext;
@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 pub(crate) struct KnownTables {
-    tables: BTreeMap<String, Hats>,
+    tables: BTreeMap<String, Arc<Hats>>,
 }
 
 impl KnownTables {
@@ -46,16 +46,9 @@ impl KnownTables {
         .await?;
         let tap_schema = TapSchema::new(tables)?;
 
-        let catalog_name = ctx.state().config_options().catalog.default_catalog.clone();
-        let catalog = ctx.catalog(&catalog_name).ok_or_else(|| {
-            DataFusionError::Internal(format!("Default catalog '{catalog_name}' is not found"))
-        })?;
         // DataFusion lowercases unquoted identifiers, so the schema must be registered
         // lowercased to be found by `FROM TAP_SCHEMA.tables`
-        let schema_name = TAP_SCHEMA.to_ascii_lowercase();
-        if catalog.schema(&schema_name).is_none() {
-            catalog.register_schema(&schema_name, Arc::new(MemorySchemaProvider::new()))?;
-        }
+        register_df_schema_if_missing(ctx, &TAP_SCHEMA.to_ascii_lowercase())?;
 
         for (name, batch) in tap_schema.named_batches() {
             let table = MemTable::try_new(batch.schema(), vec![vec![batch.clone()]])?;
@@ -64,6 +57,36 @@ impl KnownTables {
         }
         Ok(())
     }
+
+    /// Registers the known tables in the session's default catalog, creating their DataFusion
+    /// schemas if needed.
+    pub(crate) async fn register_hats_tables(&self, ctx: &SessionContext) -> DFResult<()> {
+        for (name, hats) in &self.tables {
+            let provider = HatsTableProvider::new(hats.clone())
+                .await
+                .map_err(|e| e.context(format!("Cannot load table '{name}'")))?;
+            // The name is parsed, so "a.x" is table "x" in DataFusion schema "a"
+            let table_ref = TableReference::from(name.as_str());
+            if let Some(df_schema_name) = table_ref.schema() {
+                register_df_schema_if_missing(ctx, df_schema_name)?;
+            }
+            ctx.register_table(table_ref, Arc::new(provider))?;
+        }
+        Ok(())
+    }
+}
+
+/// Registers an empty DataFusion schema (a namespace of tables, not an Arrow schema) in the
+/// session's default catalog, if it has none with this name.
+fn register_df_schema_if_missing(ctx: &SessionContext, df_schema_name: &str) -> DFResult<()> {
+    let catalog_name = ctx.state().config_options().catalog.default_catalog.clone();
+    let catalog = ctx.catalog(&catalog_name).ok_or_else(|| {
+        DataFusionError::Internal(format!("Default catalog '{catalog_name}' is not found"))
+    })?;
+    if catalog.schema(df_schema_name).is_none() {
+        catalog.register_schema(df_schema_name, Arc::new(MemorySchemaProvider::new()))?;
+    }
+    Ok(())
 }
 
 #[derive(FromPyObject)]
@@ -174,6 +197,30 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("Cannot load table 'a.x'"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn register_hats_tables() {
+        let known_tables = KnownTables {
+            tables: BTreeMap::from([(
+                "a.x".to_string(),
+                Hats::new(test_data_location("small_sky")),
+            )]),
+        };
+        let ctx = SessionContext::new();
+        storage().register_object_stores(&ctx);
+        known_tables.register_hats_tables(&ctx).await.unwrap();
+
+        let batches = ctx
+            .adql("SELECT id, ra, dec FROM a.x")
+            .await
+            .unwrap()
+            .collect()
+            .await
+            .unwrap();
+        let num_rows: usize = batches.iter().map(|b| b.num_rows()).sum();
+        // hats_nrows of small_sky
+        assert_eq!(num_rows, 131);
     }
 
     #[test]

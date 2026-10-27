@@ -63,6 +63,8 @@ jobs:
         CIBW_ARCHS: ${{ matrix.arch }}
         # Build abi3 wheels with the oldest supported Python. Must be synchronized with pyproject.toml and Cargo.toml
         CIBW_BUILD: "cp311-*"
+        # Build manylinux (glibc) wheels only, skip MUSL
+        CIBW_SKIP: "*-musllinux_*"
         # Linux builds run in docker: we install Rust toolchain there and point Cargo to re-use the build cache.
         CIBW_BEFORE_ALL_LINUX: curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
         CIBW_ENVIRONMENT_LINUX: PATH="$HOME/.cargo/bin:$PATH" CARGO_TARGET_DIR=/host${{ github.workspace }}/target

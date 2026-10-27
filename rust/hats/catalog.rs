@@ -1,12 +1,10 @@
 use crate::common::{SingleCache, parquet_schema_from_bytes};
-use crate::engine::Engine;
 use crate::hats::properties::{CollectionProperties, HatsProperties, IndexProperties, Properties};
 use crate::store::store_path::StorePath;
 use crate::table_metadata::TableMetadata;
 use datafusion::arrow::datatypes::SchemaRef;
 use datafusion::common::Result as DFResult;
 use datafusion::error::DataFusionError;
-use datafusion::object_store::path::Path;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use tokio::sync::OnceCell;
@@ -16,49 +14,45 @@ const SCHEMA_FILE: &str = "_common_metadata";
 
 /// Representation of a HATS collection or catalog.
 pub(crate) struct Hats {
-    /// Path specified by the user/config, it may point to a collection or a catalog.
-    discovery_path: Path,
-    /// Layzily initialized inner representation of the HATS collection or catalog.
+    /// Location specified by the user/config, it may point to a collection or a catalog.
+    discovery_location: StorePath,
+    /// Lazily initialized inner representation of the HATS collection or catalog.
     inner: SingleCache<Arc<HatsInner>>,
 }
 
 impl Hats {
-    /// Creates a lazily initialized HATS catalog from a path, which should point to
+    /// Creates a lazily initialized HATS catalog from a location, which should point to
     /// either a HATS collection (with "collection.properties" file) or a HATS catalog
     /// (with "hats.properties" file).
     /// We assume that collection.properties' hats_primary_table_url is a relative path,
-    /// available in the same directory as collection.properties. Remote paths are not supported
-    /// yet.
+    /// available in the same directory as collection.properties, so it is in the same store.
     /// In the future we may support discovery of catalog/collection by moving up the
-    /// directory tree, but for now we require the user to specify the path explicitly.
-    pub(crate) fn from_path(discovery_path: impl Into<Path>) -> Self {
+    /// directory tree, but for now we require the user to specify the location explicitly.
+    pub(crate) fn new(discovery_location: StorePath) -> Self {
         Self {
-            discovery_path: discovery_path.into(),
+            discovery_location,
             inner: SingleCache::new(),
         }
     }
 
-    async fn get_inner(&self, engine: Arc<Engine>) -> DFResult<Arc<HatsInner>> {
+    async fn get_inner(&self) -> DFResult<Arc<HatsInner>> {
         self.inner
             .try_get_with(async || {
-                HatsInner::try_from_discovery_path(engine, &self.discovery_path)
+                HatsInner::try_from_discovery_location(&self.discovery_location)
                     .await
                     .map(Arc::new)
             })
             .await
     }
 
-    pub(crate) async fn metadata(&self, engine: Arc<Engine>) -> DFResult<Arc<TableMetadata>> {
-        self.get_inner(engine.clone()).await?.metadata(engine).await
+    pub(crate) async fn metadata(&self) -> DFResult<Arc<TableMetadata>> {
+        self.get_inner().await?.metadata().await
     }
 
     #[allow(dead_code)] // Remove when used
     /// Location of the primary catalog directory.
-    pub(crate) async fn catalog_location(&self, engine: Arc<Engine>) -> DFResult<StorePath> {
-        self.get_inner(engine.clone())
-            .await?
-            .catalog
-            .location(&engine)
+    pub(crate) async fn catalog_location(&self) -> DFResult<StorePath> {
+        Ok(self.get_inner().await?.catalog.location.clone())
     }
 
     #[allow(dead_code)] // Remove when used
@@ -66,20 +60,15 @@ impl Hats {
     ///
     /// Returns `None` if this is a catalog rather than a collection, or if the collection has no
     /// index catalog for `column`. Fails if the index catalog exists but cannot be loaded.
-    pub(crate) async fn index_location(
-        &self,
-        engine: Arc<Engine>,
-        column: &str,
-    ) -> DFResult<Option<StorePath>> {
-        let inner = self.get_inner(engine.clone()).await?;
+    pub(crate) async fn index_location(&self, column: &str) -> DFResult<Option<StorePath>> {
+        let inner = self.get_inner().await?;
         let Some(collection) = &inner.collection else {
             return Ok(None);
         };
-        collection
-            .index_catalog(engine.clone(), column)
+        Ok(collection
+            .index_catalog(column)
             .await?
-            .map(|index| index.location(&engine))
-            .transpose()
+            .map(|index| index.location.clone()))
     }
 }
 
@@ -93,20 +82,18 @@ struct HatsInner {
 }
 
 impl HatsInner {
-    async fn try_from_discovery_path(engine: Arc<Engine>, discovery_path: &Path) -> DFResult<Self> {
-        let collection = HatsCollection::try_from_dir(engine.clone(), discovery_path)
-            .await
-            .ok();
+    async fn try_from_discovery_location(discovery_location: &StorePath) -> DFResult<Self> {
+        let collection = HatsCollection::try_from_dir(discovery_location).await.ok();
         match collection {
             Some(collection) => {
-                let catalog = collection.find_catalog(engine.clone()).await?;
+                let catalog = collection.find_catalog().await?;
                 Ok(Self {
                     catalog,
                     collection: Some(collection),
                     metadata: OnceCell::new(),
                 })
             }
-            None => match HatsCatalog::try_from_dir(engine.clone(), discovery_path).await {
+            None => match HatsCatalog::try_from_dir(discovery_location).await {
                 Ok(catalog) => Ok(Self {
                     catalog,
                     collection: None,
@@ -114,7 +101,7 @@ impl HatsInner {
                 }),
                 Err(err) => Err(DataFusionError::Configuration(format!(
                     "Path '{}' is neither a HATS collection nor a catalog: {err}",
-                    discovery_path
+                    discovery_location.url()
                 ))),
             },
         }
@@ -123,13 +110,13 @@ impl HatsInner {
     /// Metadata of the primary catalog.
     ///
     /// Indexed columns are the HEALPix column and the columns of the collection's index catalogs.
-    async fn metadata(&self, engine: Arc<Engine>) -> DFResult<Arc<TableMetadata>> {
+    async fn metadata(&self) -> DFResult<Arc<TableMetadata>> {
         self.metadata
             .get_or_try_init(async || {
-                let schema = self.catalog.schema(engine.clone()).await?;
-                let properties = self.catalog.properties(engine.clone()).await?;
+                let schema = self.catalog.schema().await?;
+                let properties = self.catalog.properties().await?;
                 let index_columns: BTreeSet<&str> = match &self.collection {
-                    Some(collection) => collection.indexes(engine).await?.collect(),
+                    Some(collection) => collection.indexes().await?.collect(),
                     None => BTreeSet::new(),
                 };
                 let principal_columns: BTreeSet<&str> = match &properties.cols_default {
@@ -170,44 +157,42 @@ impl HatsInner {
 
 /// Representation of a HATS collection.
 struct HatsCollection {
-    /// Collection path, one with "collection.properties" file.
-    path: Path,
-    /// Lazily initialized inner representation of the collection, which requires propertis file
+    /// Collection location, one with "collection.properties" file.
+    location: StorePath,
+    /// Lazily initialized inner representation of the collection, which requires properties file
     /// parsing.
     lazy_inner: OnceCell<LazilyInitializedHatsCollection>,
 }
 
 impl HatsCollection {
-    async fn new(path: impl Into<Path>, properties: Option<CollectionProperties>) -> Self {
+    fn new(location: StorePath, properties: Option<CollectionProperties>) -> Self {
         Self {
-            path: path.into(),
+            location,
             lazy_inner: OnceCell::new_with(properties.map(LazilyInitializedHatsCollection::new)),
         }
     }
 
-    async fn lazy_inner(&self, engine: Arc<Engine>) -> DFResult<&LazilyInitializedHatsCollection> {
-        let engine = Arc::clone(&engine);
-        let path = self.path.clone();
+    async fn lazy_inner(&self) -> DFResult<&LazilyInitializedHatsCollection> {
         self.lazy_inner
-            .get_or_try_init(async move || {
-                let collection_properties = CollectionProperties::from_dir(engine, &path).await?;
+            .get_or_try_init(async || {
+                let collection_properties = CollectionProperties::from_dir(&self.location).await?;
                 Ok(LazilyInitializedHatsCollection::new(collection_properties))
             })
             .await
     }
 
-    async fn try_from_dir(engine: Arc<Engine>, path: &Path) -> DFResult<Self> {
-        let collection_properties = CollectionProperties::from_dir(engine, path).await?;
-        Ok(Self::new(path.clone(), Some(collection_properties)).await)
+    async fn try_from_dir(location: &StorePath) -> DFResult<Self> {
+        let collection_properties = CollectionProperties::from_dir(location).await?;
+        Ok(Self::new(location.clone(), Some(collection_properties)))
     }
 
-    async fn properties(&self, engine: Arc<Engine>) -> DFResult<&CollectionProperties> {
-        Ok(&self.lazy_inner(engine).await?.properties)
+    async fn properties(&self) -> DFResult<&CollectionProperties> {
+        Ok(&self.lazy_inner().await?.properties)
     }
 
-    async fn indexes(&self, engine: Arc<Engine>) -> DFResult<impl Iterator<Item = &str>> {
+    async fn indexes(&self) -> DFResult<impl Iterator<Item = &str>> {
         Ok(self
-            .lazy_inner(engine)
+            .lazy_inner()
             .await?
             .index_catalogs
             .keys()
@@ -218,31 +203,26 @@ impl HatsCollection {
     /// The index catalog for `column`, initialized on the first call.
     ///
     /// Returns `None` if the collection has no index catalog for `column`.
-    async fn index_catalog(
-        &self,
-        engine: Arc<Engine>,
-        column: &str,
-    ) -> DFResult<Option<&IndexCatalog>> {
-        let inner = self.lazy_inner(engine.clone()).await?;
+    async fn index_catalog(&self, column: &str) -> DFResult<Option<&IndexCatalog>> {
+        let inner = self.lazy_inner().await?;
         let (Some(cell), Some(index_dir)) = (
             inner.index_catalogs.get(column),
             inner.properties.all_indexes.get(column),
         ) else {
             return Ok(None);
         };
-        let index_path = self.path.clone().join(index_dir.as_str());
-        cell.get_or_try_init(async || IndexCatalog::try_from_dir(engine, &index_path).await)
+        let index_location = self.location.join(index_dir.as_str());
+        cell.get_or_try_init(async || IndexCatalog::try_from_dir(&index_location).await)
             .await
             .map(Some)
     }
 
-    async fn find_catalog(&self, engine: Arc<Engine>) -> DFResult<HatsCatalog> {
-        let properties = self.properties(engine.clone()).await?;
-        let catalog_path = self
-            .path
-            .clone()
+    async fn find_catalog(&self) -> DFResult<HatsCatalog> {
+        let properties = self.properties().await?;
+        let catalog_location = self
+            .location
             .join(properties.hats_primary_table_url.as_str());
-        HatsCatalog::try_from_dir(engine, &catalog_path).await
+        HatsCatalog::try_from_dir(&catalog_location).await
     }
 }
 
@@ -271,8 +251,8 @@ impl LazilyInitializedHatsCollection {
 
 /// Representation of a HATS catalog.
 struct HatsCatalog {
-    /// Catalog path, one with "hats.properties" file.
-    path: Path,
+    /// Catalog location, one with "hats.properties" file.
+    location: StorePath,
     /// Properties of the catalog, lazily initialized.
     properties: OnceCell<HatsProperties>,
     /// The schema of the catalog, lazily initialized.
@@ -282,16 +262,16 @@ struct HatsCatalog {
 impl CatalogDir for HatsCatalog {
     type Properties = HatsProperties;
 
-    fn new(path: impl Into<Path>, properties: Option<HatsProperties>) -> Self {
+    fn new(location: StorePath, properties: Option<HatsProperties>) -> Self {
         Self {
-            path: path.into(),
+            location,
             properties: OnceCell::new_with(properties),
             schema: OnceCell::new(),
         }
     }
 
-    fn path(&self) -> &Path {
-        &self.path
+    fn location(&self) -> &StorePath {
+        &self.location
     }
 
     fn properties_cell(&self) -> &OnceCell<HatsProperties> {
@@ -305,8 +285,8 @@ impl CatalogDir for HatsCatalog {
 
 /// Representation of a HATS index catalog.
 struct IndexCatalog {
-    /// Index catalog path, one with "hats.properties" file.
-    path: Path,
+    /// Index catalog location, one with "hats.properties" file.
+    location: StorePath,
     /// Properties of the index catalog, lazily initialized.
     properties: OnceCell<IndexProperties>,
     /// The schema of the index catalog, lazily initialized.
@@ -316,16 +296,16 @@ struct IndexCatalog {
 impl CatalogDir for IndexCatalog {
     type Properties = IndexProperties;
 
-    fn new(path: impl Into<Path>, properties: Option<IndexProperties>) -> Self {
+    fn new(location: StorePath, properties: Option<IndexProperties>) -> Self {
         Self {
-            path: path.into(),
+            location,
             properties: OnceCell::new_with(properties),
             schema: OnceCell::new(),
         }
     }
 
-    fn path(&self) -> &Path {
-        &self.path
+    fn location(&self) -> &StorePath {
+        &self.location
     }
 
     fn properties_cell(&self) -> &OnceCell<IndexProperties> {
@@ -345,43 +325,40 @@ trait CatalogDir: Sized {
     type Properties: Properties;
 
     /// Creates a catalog, properties are loaded lazily if not provided.
-    fn new(path: impl Into<Path>, properties: Option<Self::Properties>) -> Self;
+    fn new(location: StorePath, properties: Option<Self::Properties>) -> Self;
 
-    fn path(&self) -> &Path;
+    /// Location of the catalog directory.
+    fn location(&self) -> &StorePath;
 
     fn properties_cell(&self) -> &OnceCell<Self::Properties>;
 
     fn schema_cell(&self) -> &OnceCell<SchemaRef>;
 
-    async fn try_from_dir(engine: Arc<Engine>, path: &Path) -> DFResult<Self> {
-        let properties = Self::Properties::from_dir(engine, path).await?;
-        Ok(Self::new(path.clone(), Some(properties)))
+    async fn try_from_dir(location: &StorePath) -> DFResult<Self> {
+        let properties = Self::Properties::from_dir(location).await?;
+        Ok(Self::new(location.clone(), Some(properties)))
     }
 
-    /// Location of the catalog directory inside its mount.
-    fn location(&self, engine: &Engine) -> DFResult<StorePath> {
-        engine.resolve(self.path())
-    }
-
-    async fn properties(&self, engine: Arc<Engine>) -> DFResult<&Self::Properties> {
+    async fn properties(&self) -> DFResult<&Self::Properties> {
         self.properties_cell()
-            .get_or_try_init(async || Self::Properties::from_dir(engine, self.path()).await)
+            .get_or_try_init(async || Self::Properties::from_dir(self.location()).await)
             .await
     }
 
-    async fn schema(&self, engine: Arc<Engine>) -> DFResult<SchemaRef> {
+    async fn schema(&self) -> DFResult<SchemaRef> {
         self.schema_cell()
             .get_or_try_init(async || {
-                let schema_path = self.path().clone().join(DATASET_DIR).join(SCHEMA_FILE);
-                let bytes = engine.read_bytes(&schema_path).await.map_err(|e| {
+                let schema_location = self.location().join(DATASET_DIR).join(SCHEMA_FILE);
+                let schema_url = schema_location.url();
+                let bytes = schema_location.read_bytes().await.map_err(|e| {
                     e.context(format!(
-                        "Cannot read HATS catalog schema file '{schema_path}'"
+                        "Cannot read HATS catalog schema file '{schema_url}'"
                     ))
                 })?;
                 // Footer-only file, so an async reader wouldn't save any I/O
                 parquet_schema_from_bytes(bytes).map_err(|e| {
                     e.context(format!(
-                        "HATS catalog schema file '{schema_path}' is not a valid parquet file"
+                        "HATS catalog schema file '{schema_url}' is not a valid parquet file"
                     ))
                 })
             })
@@ -393,8 +370,9 @@ trait CatalogDir: Sized {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::Engine;
     use crate::table_metadata::ColumnMetadata;
-    use crate::tests::util::{engine, test_data_path};
+    use crate::tests::util::{engine, test_data_location, test_data_path};
     use datafusion::prelude::{ParquetReadOptions, SessionContext};
 
     fn field_names(schema: &SchemaRef) -> Vec<&str> {
@@ -424,13 +402,12 @@ mod tests {
 
     #[tokio::test]
     async fn discover_catalog() {
-        let engine = engine();
-        let hats = Hats::from_path(test_data_path("small_sky"));
-        let inner = hats.get_inner(engine.clone()).await.unwrap();
+        let hats = Hats::new(test_data_location("small_sky"));
+        let inner = hats.get_inner().await.unwrap();
         assert!(inner.collection.is_none());
-        assert_eq!(inner.catalog.path, test_data_path("small_sky"));
+        assert_eq!(inner.catalog.location.path(), &test_data_path("small_sky"));
 
-        let metadata = hats.metadata(engine).await.unwrap();
+        let metadata = hats.metadata().await.unwrap();
         let names = column_names(&metadata, |_| true);
         for column in ["id", "ra", "dec", "_healpix_29"] {
             assert!(names.contains(&column), "{column} not in {names:?}");
@@ -461,27 +438,22 @@ mod tests {
 
     #[tokio::test]
     async fn discover_collection() {
-        let engine = engine();
-        let hats = Hats::from_path(test_data_path("small_sky_o1_collection"));
-        let inner = hats.get_inner(engine.clone()).await.unwrap();
+        let hats = Hats::new(test_data_location("small_sky_o1_collection"));
+        let inner = hats.get_inner().await.unwrap();
         let Some(collection) = &inner.collection else {
             panic!("small_sky_o1_collection should be discovered as a collection");
         };
         assert_eq!(
-            collection
-                .indexes(engine.clone())
-                .await
-                .unwrap()
-                .collect::<Vec<_>>(),
+            collection.indexes().await.unwrap().collect::<Vec<_>>(),
             ["id"]
         );
         assert_eq!(
-            inner.catalog.path,
-            test_data_path("small_sky_o1_collection/small_sky_order1")
+            inner.catalog.location.path(),
+            &test_data_path("small_sky_o1_collection/small_sky_order1")
         );
 
-        let metadata = hats.metadata(engine.clone()).await.unwrap();
-        let schema = inner.catalog.schema(engine).await.unwrap();
+        let metadata = hats.metadata().await.unwrap();
+        let schema = inner.catalog.schema().await.unwrap();
         assert_eq!(column_names(&metadata, |_| true), field_names(&schema));
         assert_eq!(
             column_names(&metadata, |c| c.indexed),
@@ -491,8 +463,8 @@ mod tests {
 
     #[tokio::test]
     async fn discover_neither() {
-        let hats = Hats::from_path(test_data_path("does_not_exist"));
-        let Err(DataFusionError::Shared(err)) = hats.get_inner(engine()).await else {
+        let hats = Hats::new(test_data_location("does_not_exist"));
+        let Err(DataFusionError::Shared(err)) = hats.get_inner().await else {
             panic!("expected an error");
         };
         assert!(matches!(err.as_ref(), DataFusionError::Configuration(_)));
@@ -500,23 +472,20 @@ mod tests {
 
     #[tokio::test]
     async fn index_catalog_schema() {
-        let engine = engine();
-        let path = test_data_path("small_sky_o1_collection/small_sky_order1_id_index");
-        let catalog = IndexCatalog::try_from_dir(engine.clone(), &path)
-            .await
-            .unwrap();
-        let properties = catalog.properties(engine.clone()).await.unwrap();
+        let location = test_data_location("small_sky_o1_collection/small_sky_order1_id_index");
+        let catalog = IndexCatalog::try_from_dir(&location).await.unwrap();
+        let properties = catalog.properties().await.unwrap();
         assert_eq!(properties.hats_index_column, "id");
 
-        let schema = catalog.schema(engine).await.unwrap();
+        let schema = catalog.schema().await.unwrap();
         let names = field_names(&schema);
         assert!(names.contains(&"id"), "id not in {names:?}");
     }
 
     #[tokio::test]
     async fn index_catalog_schema_missing_file() {
-        let catalog = IndexCatalog::new(test_data_path("does_not_exist"), None);
-        let err = catalog.schema(engine()).await.unwrap_err();
+        let catalog = IndexCatalog::new(test_data_location("does_not_exist"), None);
+        let err = catalog.schema().await.unwrap_err();
         assert!(
             err.to_string()
                 .contains("Cannot read HATS catalog schema file"),
@@ -554,8 +523,8 @@ mod tests {
     #[tokio::test]
     async fn catalog_location() {
         let engine = engine();
-        let hats = Hats::from_path(test_data_path("small_sky_o1_collection"));
-        let location = hats.catalog_location(engine.clone()).await.unwrap();
+        let hats = Hats::new(test_data_location("small_sky_o1_collection"));
+        let location = hats.catalog_location().await.unwrap();
         assert_eq!(
             location.path(),
             &test_data_path("small_sky_o1_collection/small_sky_order1")
@@ -571,12 +540,8 @@ mod tests {
     #[tokio::test]
     async fn index_location() {
         let engine = engine();
-        let hats = Hats::from_path(test_data_path("small_sky_o1_collection"));
-        let location = hats
-            .index_location(engine.clone(), "id")
-            .await
-            .unwrap()
-            .unwrap();
+        let hats = Hats::new(test_data_location("small_sky_o1_collection"));
+        let location = hats.index_location("id").await.unwrap().unwrap();
         assert_eq!(
             location.path(),
             &test_data_path("small_sky_o1_collection/small_sky_order1_id_index")
@@ -594,20 +559,20 @@ mod tests {
 
     #[tokio::test]
     async fn index_location_unknown_column() {
-        let hats = Hats::from_path(test_data_path("small_sky_o1_collection"));
-        assert!(hats.index_location(engine(), "ra").await.unwrap().is_none());
+        let hats = Hats::new(test_data_location("small_sky_o1_collection"));
+        assert!(hats.index_location("ra").await.unwrap().is_none());
     }
 
     #[tokio::test]
     async fn index_location_of_catalog() {
-        let hats = Hats::from_path(test_data_path("small_sky"));
-        assert!(hats.index_location(engine(), "id").await.unwrap().is_none());
+        let hats = Hats::new(test_data_location("small_sky"));
+        assert!(hats.index_location("id").await.unwrap().is_none());
     }
 
     #[tokio::test]
     async fn schema_missing_file() {
-        let catalog = HatsCatalog::new(test_data_path("does_not_exist"), None);
-        let err = catalog.schema(engine()).await.unwrap_err();
+        let catalog = HatsCatalog::new(test_data_location("does_not_exist"), None);
+        let err = catalog.schema().await.unwrap_err();
         assert!(
             err.to_string()
                 .contains("Cannot read HATS catalog schema file"),

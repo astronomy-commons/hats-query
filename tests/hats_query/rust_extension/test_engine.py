@@ -32,3 +32,21 @@ async def test_query_tap_schema(example_config_path) -> None:
         "TAP_SCHEMA.keys",
         "TAP_SCHEMA.key_columns",
     }
+
+
+async def test_query_hats_table(example_config_path) -> None:
+    """Verify that a configured HATS collection is queryable"""
+    config = Config.load(example_config_path)
+    engine = build_engine(config.mounts, config.tap.tables)
+
+    batches = [batch async for batch in engine.query("SELECT id, ra, dec FROM small_sky.object")]
+    num_rows = sum(batch.num_rows for batch in batches)
+    # hats_nrows of the collection's primary catalog
+    assert num_rows == 131
+
+    rows = [
+        row
+        async for batch in engine.query("SELECT id, ra, dec FROM small_sky.object WHERE id = 707")
+        for row in batch.to_pylist()
+    ]
+    assert rows == [{"id": 707, "ra": 308.5, "dec": -69.5}]

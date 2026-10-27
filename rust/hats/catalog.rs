@@ -28,11 +28,13 @@ impl Hats {
     /// available in the same directory as collection.properties, so it is in the same store.
     /// In the future we may support discovery of catalog/collection by moving up the
     /// directory tree, but for now we require the user to specify the location explicitly.
-    pub(crate) fn new(discovery_location: StorePath) -> Self {
-        Self {
+    ///
+    /// It is shared, so all its users benefit from the lazily loaded data.
+    pub(crate) fn new(discovery_location: StorePath) -> Arc<Self> {
+        Arc::new(Self {
             discovery_location,
             inner: SingleCache::new(),
-        }
+        })
     }
 
     async fn get_inner(&self) -> DFResult<Arc<HatsInner>> {
@@ -49,7 +51,6 @@ impl Hats {
         self.get_inner().await?.metadata().await
     }
 
-    #[allow(dead_code)] // Remove when used
     /// Location of the primary catalog directory.
     pub(crate) async fn catalog_location(&self) -> DFResult<StorePath> {
         Ok(self.get_inner().await?.catalog.location.clone())

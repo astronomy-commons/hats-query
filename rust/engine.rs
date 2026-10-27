@@ -72,6 +72,7 @@ impl Engine {
                 register_adql(&ctx);
                 self.storage.register_object_stores(&ctx);
                 self.tables.register_tap_schema_tables(&ctx).await?;
+                self.tables.register_hats_tables(&ctx).await?;
                 Ok(ctx)
             })
             .await

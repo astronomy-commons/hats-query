@@ -8,7 +8,10 @@ mod output;
 mod parquet;
 mod store;
 mod sums;
+mod table_metadata;
 mod tap;
+#[cfg(test)]
+mod tests;
 
 use crate::engine::{PyEngine, build_engine};
 use crate::parquet::ParquetReader;

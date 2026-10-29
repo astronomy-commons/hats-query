@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<vosi:tableset xmlns:vosi="http://www.ivoa.net/xml/VOSITables/v1.0">
+<vosi:tableset xmlns:vosi="http://www.ivoa.net/xml/VOSITables/v1.0"
+               xmlns:vs="http://www.ivoa.net/xml/VODataService/v1.1"
+               xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 {%- for schema in schemas %}
   <schema>
     <name>{{ schema.schema_name }}</name>
@@ -12,6 +14,25 @@
       {%- if table.description %}
       <description>{{ table.description }}</description>
       {%- endif %}
+      {%- for column in table.columns %}
+      <column{% if column.std %} std="true"{% endif %}>
+        <name>{{ column.column_name }}</name>
+        {%- for element in ["description", "unit", "ucd", "utype"] %}
+        {%- if column[element] %}
+        <{{ element }}>{{ column[element] }}</{{ element }}>
+        {%- endif %}
+        {%- endfor %}
+        <dataType xsi:type="vs:VOTableType"
+          {%- if column.arraysize %} arraysize="{{ column.arraysize }}"{% endif %}
+          {%- if column.xtype %} extendedType="{{ column.xtype }}"{% endif %}>{{ column.datatype }}</dataType>
+        {%- if column.indexed %}
+        <flag>indexed</flag>
+        {%- endif %}
+        {%- if column.principal %}
+        <flag>principal</flag>
+        {%- endif %}
+      </column>
+      {%- endfor %}
     </table>
     {%- endfor %}
   </schema>

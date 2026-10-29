@@ -64,12 +64,14 @@ impl Engine {
         })
     }
 
-    async fn ctx(&self) -> DFResult<&SessionContext> {
+    async fn ctx(self: &Arc<Self>) -> DFResult<&SessionContext> {
         self.ctx
             .get_or_try_init(async || {
                 let ctx = SessionContext::new();
                 register_adql(&ctx);
-                self.tables.register_tap_schema_tables(&ctx)?;
+                self.tables
+                    .register_tap_schema_tables(self.clone(), &ctx)
+                    .await?;
                 Ok(ctx)
             })
             .await

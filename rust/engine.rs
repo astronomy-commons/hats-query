@@ -2,11 +2,11 @@ use crate::adql::{AdqlContext as _, register_adql};
 use crate::exceptions::datafusion_error_to_py_exception;
 use crate::output::{PyAsyncRecordBatchIterator, RecordBatchIterator, SyncableRecordBatchStream};
 use crate::store::mount_tree::{MountConfig, MountTree};
+use crate::store::store_path::StorePath;
 use crate::tap::{KnownTables, TapTableConfig};
 use async_trait::async_trait;
 use bytes::Bytes;
 use datafusion::common::Result as DFResult;
-use datafusion::object_store::ObjectStoreExt;
 use datafusion::object_store::path::Path;
 use datafusion::prelude::SessionContext;
 use pyo3::prelude::*;
@@ -64,11 +64,12 @@ impl Engine {
         })
     }
 
-    async fn ctx(self: &Arc<Self>) -> DFResult<&SessionContext> {
+    pub(crate) async fn ctx(self: &Arc<Self>) -> DFResult<&SessionContext> {
         self.ctx
             .get_or_try_init(async || {
                 let ctx = SessionContext::new();
                 register_adql(&ctx);
+                self.mounts.register_object_stores(&ctx);
                 self.tables
                     .register_tap_schema_tables(self.clone(), &ctx)
                     .await?;
@@ -77,9 +78,13 @@ impl Engine {
             .await
     }
 
+    /// Finds the mount containing `path`, see `MountTree::resolve`.
+    pub(crate) fn resolve(&self, path: &Path) -> DFResult<StorePath> {
+        self.mounts.resolve(path)
+    }
+
     pub(crate) async fn read_bytes(&self, path: &Path) -> DFResult<Bytes> {
-        let (store, path) = self.mounts.resolve(path)?;
-        Ok(store.get(&path).await?.bytes().await?)
+        self.resolve(path)?.read_bytes().await
     }
 }
 

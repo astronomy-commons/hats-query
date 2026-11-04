@@ -1,6 +1,7 @@
 use crate::arrow_votable::vo_field;
-use datafusion::arrow::datatypes::{FieldRef, Schema};
+use datafusion::arrow::datatypes::{FieldRef, Fields, Schema, SchemaRef};
 use datafusion::common::Result as DFResult;
+use std::sync::Arc;
 use votable::field::Field;
 
 /// Metadata of the table.
@@ -19,6 +20,16 @@ impl TableMetadata {
             .map(ColumnMetadata::new)
             .collect::<DFResult<_>>()?;
         Ok(Self { columns })
+    }
+
+    /// Arrow schema of the columns.
+    pub(crate) fn schema(&self) -> SchemaRef {
+        let fields: Fields = self
+            .columns
+            .iter()
+            .map(|column| column.arrow.clone())
+            .collect();
+        Arc::new(Schema::new(fields))
     }
 }
 

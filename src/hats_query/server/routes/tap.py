@@ -30,10 +30,33 @@ async def capabilities(request: Request) -> Response:
             "tap_url": capabilities_url.removesuffix("/capabilities"),
             "capabilities_url": capabilities_url,
             "availability_url": request.url_for("availability"),
+            "tables_url": request.url_for("tables"),
             "examples_url": request.url_for("examples"),
         },
         media_type="text/xml",
     )
+
+
+@router.get("/tables", response_class=Response)
+async def tables(request: Request) -> Response:
+    """VOSI tables, see https://www.ivoa.net/Documents/VOSI/20170524/REC-VOSI-1.1.html#tth_sEc3.3"""
+    engine = request.app.state.engine
+    schemas = await _query_rows(
+        engine, "SELECT schema_name, description FROM TAP_SCHEMA.schemas ORDER BY schema_index"
+    )
+    for schema in schemas:
+        schema["tables"] = []
+    tables_by_schema = {schema["schema_name"]: schema["tables"] for schema in schemas}
+    for table in await _query_rows(
+        engine, "SELECT schema_name, table_name, description FROM TAP_SCHEMA.tables ORDER BY table_index"
+    ):
+        tables_by_schema[table["schema_name"]].append(table)
+    return templates.TemplateResponse(request, "tables.xml", {"schemas": schemas}, media_type="text/xml")
+
+
+async def _query_rows(engine, adql: str) -> list[dict]:
+    """Run an ADQL query and return its rows as dicts."""
+    return [row async for batch in engine.query(adql) for row in batch.to_pylist()]
 
 
 @router.get("/examples", response_class=Response)

@@ -12,6 +12,13 @@ from hats_query.server import create_app
 from hats_query.server.config import Config
 
 IVOA_SCHEMAS_DIR = Path(__file__).parent.parent / "data" / "ivoa-schemas"
+# Imported namespaces from local files, not their remote schemaLocation
+IVOA_SCHEMA_LOCATIONS = {
+    "http://www.ivoa.net/xml/VOResource/v1.0": str(IVOA_SCHEMAS_DIR / "VOResource-v1.3.xsd"),
+    "http://www.ivoa.net/xml/VODataService/v1.1": str(IVOA_SCHEMAS_DIR / "VODataService-v1.3.xsd"),
+    "http://www.ivoa.net/xml/TAPRegExt/v1.0": str(IVOA_SCHEMAS_DIR / "TAPRegExt-v1.1.xsd"),
+    "http://www.ivoa.net/xml/STC/stc-v1.30.xsd": str(IVOA_SCHEMAS_DIR / "stc-stub.xsd"),
+}
 
 
 @pytest.fixture(scope="session")
@@ -31,13 +38,17 @@ def vosi_capabilities_schema() -> xmlschema.XMLSchema:
     """VOSI capabilities XML schema, with the TAPRegExt capability type"""
     return xmlschema.XMLSchema(
         str(IVOA_SCHEMAS_DIR / "VOSICapabilities-v1.0.xsd"),
-        # Imported namespaces from local files, not their remote schemaLocation
-        locations={
-            "http://www.ivoa.net/xml/VOResource/v1.0": str(IVOA_SCHEMAS_DIR / "VOResource-v1.3.xsd"),
-            "http://www.ivoa.net/xml/VODataService/v1.1": str(IVOA_SCHEMAS_DIR / "VODataService-v1.3.xsd"),
-            "http://www.ivoa.net/xml/TAPRegExt/v1.0": str(IVOA_SCHEMAS_DIR / "TAPRegExt-v1.1.xsd"),
-            "http://www.ivoa.net/xml/STC/stc-v1.30.xsd": str(IVOA_SCHEMAS_DIR / "stc-stub.xsd"),
-        },
+        locations=IVOA_SCHEMA_LOCATIONS,
+        allow="local",
+    )
+
+
+@pytest.fixture(scope="session")
+def vosi_tables_schema() -> xmlschema.XMLSchema:
+    """VOSI tables XML schema"""
+    return xmlschema.XMLSchema(
+        str(IVOA_SCHEMAS_DIR / "VOSITables-v1.1.xsd"),
+        locations=IVOA_SCHEMA_LOCATIONS,
         allow="local",
     )
 

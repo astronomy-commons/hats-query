@@ -11,9 +11,14 @@ path = "rust/lib.rs"
 [dependencies]
 # Must match the "arrow" version used by datafusion
 arrow-pyarrow = "59"
+async-trait = "0.1"
+bytes = "1"
 datafusion = { version = "55", default-features = false, features = ["compression", "parquet", "sql"] }
 # Must match the "futures" version used by datafusion
 futures-util = "0.3"
+java-properties = "2"
+itertools = { version = "0.15", default-features = false }
+moka = { version = "0.12", default-features = false, features = ["future"]  }
 # Must use the same "object_store" version as datafusion
 object_store_opendal = { version = "0.58" , default-features = false }
 # Must match the "opendal" version used by object_store_opendal
@@ -25,7 +30,10 @@ pyo3 = { version = "0.29", features = ["abi3-py311", "bytes"] }
 # Must match pyo3 version
 pyo3-async-runtimes = { version = "0.29", features = ["attributes", "tokio-runtime"] }
 tokio = { version = "1", default-features = false }
-url = "2"
+# votable 0.7.0 doesn't build with serde 1.0.229+ because it uses serde private API, and upstream main pins serde.
+# Our fork removes the private API usage and the pin, switch back to a release version once
+# https://github.com/cds-astro/cds-votable-rust/pull/15 is merged and released.
+votable = { git = "https://github.com/lincc-frameworks/cds-votable-rust.git", branch = "rm-serde-pin", default-features = false }
 
 [lints.rust]
 redundant_imports = "warn"

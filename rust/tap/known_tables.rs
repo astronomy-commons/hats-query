@@ -1,9 +1,11 @@
-use crate::engine::Engine;
 use crate::hats::Hats;
+use crate::store::location::Location;
+use crate::store::storage::Storage;
 use crate::tap::tap_schema::{TAP_SCHEMA, TapSchema};
 use datafusion::catalog::MemorySchemaProvider;
 use datafusion::common::{DataFusionError, Result as DFResult};
 use datafusion::datasource::MemTable;
+use datafusion::object_store::path::Path;
 use datafusion::prelude::SessionContext;
 use futures_util::future::try_join_all;
 use pyo3::FromPyObject;
@@ -15,27 +17,28 @@ pub(crate) struct KnownTables {
 }
 
 impl KnownTables {
-    pub(crate) fn from_tap_table_configs(configs: Vec<TapTableConfig>) -> Self {
+    /// Resolves the configured table paths, which are server paths, through `storage`.
+    pub(crate) fn from_tap_table_configs(
+        storage: &Storage,
+        configs: Vec<TapTableConfig>,
+    ) -> DFResult<Self> {
         let tables = configs
             .into_iter()
             .map(|config| {
-                let table = Hats::from_path(config.path.as_str());
-                (config.name, table)
+                let location = storage
+                    .resolve(&Location::Mounted(Path::from(config.path.as_str())))
+                    .map_err(|e| e.context(format!("Cannot resolve table '{}'", config.name)))?;
+                Ok((config.name, Hats::new(location)))
             })
-            .collect();
-        Self { tables }
+            .collect::<DFResult<_>>()?;
+        Ok(Self { tables })
     }
 
     /// Registers TAP_SCHEMA tables describing the known tables in the session's default catalog.
-    pub(crate) async fn register_tap_schema_tables(
-        &self,
-        engine: Arc<Engine>,
-        ctx: &SessionContext,
-    ) -> DFResult<()> {
-        let engine = &engine;
+    pub(crate) async fn register_tap_schema_tables(&self, ctx: &SessionContext) -> DFResult<()> {
         let tables = try_join_all(self.tables.iter().map(|(name, hats)| async move {
             let metadata = hats
-                .metadata(engine.clone())
+                .metadata()
                 .await
                 .map_err(|e| e.context(format!("Cannot load table '{name}'")))?;
             Ok::<_, DataFusionError>((name.as_str(), metadata))
@@ -73,7 +76,7 @@ pub(crate) struct TapTableConfig {
 mod tests {
     use super::*;
     use crate::adql::AdqlContext;
-    use crate::tests::util::{engine, test_data_path};
+    use crate::tests::util::{storage, test_data_location, test_data_path};
     use datafusion::arrow::array::AsArray;
 
     #[tokio::test]
@@ -82,19 +85,16 @@ mod tests {
             tables: BTreeMap::from([
                 (
                     "a.x".to_string(),
-                    Hats::from_path(test_data_path("small_sky")),
+                    Hats::new(test_data_location("small_sky")),
                 ),
                 (
                     "b.y".to_string(),
-                    Hats::from_path(test_data_path("small_sky_source")),
+                    Hats::new(test_data_location("small_sky_source")),
                 ),
             ]),
         };
         let ctx = SessionContext::new();
-        known_tables
-            .register_tap_schema_tables(engine(), &ctx)
-            .await
-            .unwrap();
+        known_tables.register_tap_schema_tables(&ctx).await.unwrap();
 
         let batches = ctx
             .adql("SELECT table_name FROM TAP_SCHEMA.tables")
@@ -138,10 +138,7 @@ mod tests {
             tables: BTreeMap::new(),
         };
         let ctx = SessionContext::new();
-        known_tables
-            .register_tap_schema_tables(engine(), &ctx)
-            .await
-            .unwrap();
+        known_tables.register_tap_schema_tables(&ctx).await.unwrap();
 
         let batches = ctx
             .adql(
@@ -169,13 +166,23 @@ mod tests {
         let known_tables = KnownTables {
             tables: BTreeMap::from([(
                 "a.x".to_string(),
-                Hats::from_path(test_data_path("does_not_exist")),
+                Hats::new(test_data_location("does_not_exist")),
             )]),
         };
         let err = known_tables
-            .register_tap_schema_tables(engine(), &SessionContext::new())
+            .register_tap_schema_tables(&SessionContext::new())
             .await
             .unwrap_err();
         assert!(err.to_string().contains("Cannot load table 'a.x'"), "{err}");
+    }
+
+    #[test]
+    fn from_tap_table_configs() {
+        let configs = vec![TapTableConfig {
+            name: "a.x".to_string(),
+            path: format!("/{}", test_data_path("small_sky")),
+        }];
+        let known_tables = KnownTables::from_tap_table_configs(&storage(), configs).unwrap();
+        assert_eq!(known_tables.tables.keys().collect::<Vec<_>>(), ["a.x"]);
     }
 }

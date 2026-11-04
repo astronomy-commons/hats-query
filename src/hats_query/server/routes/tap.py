@@ -47,10 +47,19 @@ async def tables(request: Request) -> Response:
     for schema in schemas:
         schema["tables"] = []
     tables_by_schema = {schema["schema_name"]: schema["tables"] for schema in schemas}
+    columns_by_table = {}
     for table in await _query_rows(
         engine, "SELECT schema_name, table_name, description FROM TAP_SCHEMA.tables ORDER BY table_index"
     ):
+        table["columns"] = []
+        columns_by_table[table["table_name"]] = table["columns"]
         tables_by_schema[table["schema_name"]].append(table)
+    for column in await _query_rows(
+        engine,
+        "SELECT table_name, column_name, description, unit, ucd, utype, datatype, arraysize, xtype, "
+        "indexed, principal, std FROM TAP_SCHEMA.columns ORDER BY column_index",
+    ):
+        columns_by_table[column["table_name"]].append(column)
     return templates.TemplateResponse(request, "tables.xml", {"schemas": schemas}, media_type="text/xml")
 
 

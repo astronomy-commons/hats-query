@@ -3,10 +3,11 @@
 import json
 import os
 import tomllib
-from pathlib import Path
-from typing import Literal, Self
+from pathlib import Path, PurePosixPath
+from typing import Annotated, Literal, Self
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ENV_PREFIX = "HATS_QUERY_"
@@ -17,6 +18,22 @@ CONFIG_FILE_ENV_VAR = f"{ENV_PREFIX}CONFIG"
 
 RESOLVED_CONFIG_ENV_VAR = f"{ENV_PREFIX}RESOLVED_CONFIG"
 """Environment variable passing the resolved config to the auto-reloaded app, developer mode only."""
+
+
+def _absolute_virtual_path(value: str) -> str:
+    """Require an absolute path without ``..`` segments and fold the POSIX ``//`` root into ``/``."""
+    path = PurePosixPath(value)
+    if not path.is_absolute():
+        raise ValueError(f"{path} must start with '/'")
+    if ".." in path.parts:
+        raise ValueError(f"{path} must not have '..' segments")
+    if path.root == "//":
+        path = PurePosixPath("/", *path.parts[1:])
+    return str(path)
+
+
+VirtualPath = Annotated[str, AfterValidator(_absolute_virtual_path)]
+"""An absolute path in the mount namespace, normalized without touching any filesystem."""
 
 
 class ServerConfig(BaseModel):
@@ -45,16 +62,24 @@ class MountConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    path: str
-    source: Path
+    path: VirtualPath
+    source: str
+    """A local directory, or a ``scheme://`` URL of a remote one."""
 
     @field_validator("source")
     @classmethod
-    def _existing_directory(cls, source: Path) -> Path:
-        source = source.resolve()
-        if not source.is_dir():
-            raise ValueError(f"{source} is not a directory")
-        return source
+    def _existing_local_directory(cls, source: str) -> str:
+        """Turn a local source into an absolute path to an existing directory, keep a remote one as is."""
+        scheme = urlsplit(source).scheme
+        if scheme == "file":
+            raise ValueError(f"{source}: give a local source as a plain path, not a file: URL")
+        # A Windows drive letter parses as a one-letter scheme
+        if scheme and not Path(source).drive:
+            return source
+        resolved = Path(source).resolve()
+        if not resolved.is_dir():
+            raise ValueError(f"{resolved} is not a directory")
+        return str(resolved)
 
 
 class TapTableConfig(BaseModel):
@@ -63,7 +88,7 @@ class TapTableConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     name: str
-    path: str
+    path: VirtualPath
 
 
 class TapExampleConfig(BaseModel):
@@ -145,10 +170,12 @@ class Config(BaseSettings):
         config_file = Path(config_file)
         with open(config_file, "rb") as f:
             data = tomllib.load(f)
-        # Resolve relative mount sources against the config file's directory.
+        # Resolve relative local mount sources against the config file's directory, URLs are kept.
         for mount in data.get("mount", []):
-            if isinstance(mount.get("source"), str):
-                mount["source"] = config_file.parent / mount["source"]
+            # A missing or non-string source is skipped here and reported by MountConfig validation
+            source = mount.get("source")
+            if isinstance(source, str) and not urlsplit(source).scheme:
+                mount["source"] = str(config_file.parent / source)
         return cls(**data, **kwargs)
 
     @classmethod

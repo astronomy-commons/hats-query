@@ -1,0 +1,120 @@
+[project]
+name = "hats-query"
+license = "MIT"
+license-files = ["LICENSE"]
+readme = "../README.md"
+authors = [
+    { name = "LINCC Frameworks", email = "lincc-frameworks-team@lists.lsst.org" }
+]
+description = "Server for querying HATS catalogs through VO and HTTP."
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+]
+dynamic = ["version"]
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "jinja2",
+    # Minimum version supported by arrow-pyarrow crate
+    # https://github.com/apache/arrow-rs/blob/55.0.0/.github/workflows/integration.yml
+    "pyarrow >= 15",
+    "pydantic-settings >= 2.3",
+    "pyvo",
+    "uvicorn",
+]
+
+[project.scripts]
+hats-query = "hats_query.__main__:main"
+
+[project.urls]
+"Source Code" = "https://github.com/astronomy-commons/hats-query"
+
+[dependency-groups]
+test = [
+    "pytest",
+    "pytest-asyncio", # Runs async tests
+    "pytest-cov", # Used to report total code coverage
+]
+
+[build-system]
+requires = ["maturin>=1.9,<2"]
+build-backend = "maturin"
+
+# The version comes from the workspace Cargo.toml. The wheel is abi3, set by pyo3's "abi3-pyXY" feature in Cargo.toml,
+# which must match CIBW_BUILD in publish-to-pypi.yml.
+[tool.maturin]
+module-name = "hats_query._extension"
+python-source = "python"
+
+[tool.uv]
+# Rebuild the extension when the Rust code changes, not only when this file does
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "Cargo.toml" },
+    { file = "rust/**/*.rs" },
+    { file = "../Cargo.toml" },
+    { file = "../Cargo.lock" },
+    { file = "../hats-query-core/Cargo.toml" },
+    { file = "../hats-query-core/src/**/*.rs" },
+]
+
+# We skip the Rust tests here because we run the tests mainly to check the wheels.
+# Paths are relative to the repository root, which cibuildwheel runs from; pytest settings come from the root
+# pyproject.toml.
+[tool.cibuildwheel]
+test-groups = ["test"]
+test-sources = [
+    "hats-query-python/tests",
+    "pyproject.toml",
+    "test-data/git-submodules/hats/tests/data",
+    "hats-query.example.toml",
+]
+test-command = "python -m pytest hats-query-python/tests"
+
+[tool.ruff]
+line-length = 110
+src = ["python"]
+[tool.ruff.lint]
+select = [
+    # pycodestyle
+    "E",
+    "W",
+    # Pyflakes
+    "F",
+    # pep8-naming
+    "N",
+    # pyupgrade
+    "UP",
+    # flake8-bugbear
+    "B",
+    # flake8-simplify
+    "SIM",
+    # isort
+    "I",
+    # docstrings
+    "D101",
+    "D102",
+    "D103",
+    "D106",
+    "D206",
+    "D207",
+    "D208",
+    "D300",
+    "D417",
+    "D419",
+    # Numpy v2.0 compatibility
+    "NPY201",
+    ]
+ignore = [
+    "UP006", # Allow non standard library generics in type hints
+    "UP007", # Allow Union in type hints
+    "SIM114", # Allow if with same arms
+    "B028", # Allow default warning level
+    "SIM117", # Allow nested with
+    "UP015", # Allow redundant open parameters
+    "UP028", # Allow yield in for loop
+]

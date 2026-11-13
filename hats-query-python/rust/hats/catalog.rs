@@ -428,7 +428,7 @@ mod tests {
     use crate::store::mount_tree::{MountConfig, MountTree};
     use crate::store::storage::Storage;
     use crate::table_metadata::ColumnMetadata;
-    use crate::tests::util::{engine, test_data_location, test_data_path};
+    use crate::tests::util::{WORKSPACE_ROOT, engine, test_data_location, test_data_path};
     use datafusion::object_store::path::Path;
     use datafusion::prelude::{ParquetReadOptions, SessionContext};
 
@@ -451,7 +451,7 @@ mod tests {
         std::fs::write(dir.path().join("hats.properties"), properties).unwrap();
         let dataset_dir = dir.path().join(DATASET_DIR);
         std::fs::create_dir(&dataset_dir).unwrap();
-        let schema_file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        let schema_file = std::path::Path::new(WORKSPACE_ROOT)
             .join(test_data_path(schema_from).as_ref())
             .join(DATASET_DIR)
             .join(SCHEMA_FILE);
@@ -606,7 +606,7 @@ mod tests {
 
     /// Number of rows in the test data file at `path`, read directly from the local filesystem.
     async fn count_rows_locally(path: &str) -> usize {
-        let path = format!("{}/{}", env!("CARGO_MANIFEST_DIR"), test_data_path(path));
+        let path = format!("{WORKSPACE_ROOT}/{}", test_data_path(path));
         SessionContext::new()
             .read_parquet(path, ParquetReadOptions::default())
             .await

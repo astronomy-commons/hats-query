@@ -53,35 +53,32 @@ Relative mount `source` paths in the config file are resolved against the file's
 
 ## Dev Guide - Getting Started
 
-Before installing any dependencies or writing code, it's a great idea to create a
-virtual environment. LINCC-Frameworks engineers primarily use `conda` to manage virtual
-environments. If you have conda installed locally, you can run the following to
-create and activate a new environment.
+The Python projects of this repository form a [uv](https://docs.astral.sh/uv/) workspace:
+uv creates the virtual environment in `.venv`, installs the locked dependencies from `uv.lock`,
+and rebuilds the Rust extension when its code changes.
 
-```
->> conda create -n <env_name> python=3.12
->> conda activate <env_name>
-```
-
-Tests use third-party data from git submodules in `tests/data/git-submodules/`:
+Tests use third-party data from git submodules in `test-data/git-submodules/`:
 example HATS catalogs from [hats](https://github.com/astronomy-commons/hats) (its `tests/data/` directory)
 and the IVOA [lyonetia](https://github.com/ivoa/lyonetia) ADQL query collection (its `src/adql/ivoa/` directory).
 Either clone with `git clone --recurse-submodules`, or let `./.setup_dev.sh` fetch them
 for you (it runs `git submodule update --init`).
 
-Once you have created a new environment, you can install this project for local
-development using the following commands:
+You can install this project for local development using the following commands:
 
 ```
 >> curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+>> curl -LsSf https://astral.sh/uv/install.sh | sh
 >> ./.setup_dev.sh
->> conda install pandoc
+>> uv run pytest
 ```
+
+Then install `pandoc` with your system package manager.
 
 Notes:
 1. The package includes a Rust extension, so a Rust toolchain is required to build it.
-   The first command installs it with [rustup](https://rustup.rs).
-2. `./.setup_dev.sh` will initialize pre-commit for this local repository, so
+   The first command installs it with [rustup](https://rustup.rs), the second one installs uv.
+2. `./.setup_dev.sh` runs `uv sync --all-packages --all-groups` and
+   will initialize pre-commit for this local repository, so
    that a set of tests will be run prior to completing a local commit. For more
    information, see the Python Project Template documentation on 
    [pre-commit](https://lincc-ppt.readthedocs.io/en/latest/practices/precommit.html)

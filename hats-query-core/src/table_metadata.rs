@@ -5,7 +5,7 @@ use std::sync::Arc;
 use votable::field::Field;
 
 /// Metadata of the table.
-pub(crate) struct TableMetadata {
+pub struct TableMetadata {
     /// Columns, in the table order.
     pub(crate) columns: Vec<ColumnMetadata>,
 }

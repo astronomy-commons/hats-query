@@ -1,9 +1,9 @@
-use crate::store::store_path::StorePath;
 use datafusion::common::Result as DFResult;
 use datafusion::error::DataFusionError;
 use datafusion::execution::object_store::ObjectStoreUrl;
 use datafusion::object_store::path::Path;
 use datafusion::prelude::SessionContext;
+use hats_query_core::store::StorePath;
 use opendal::services;
 use pyo3::prelude::*;
 use std::collections::BTreeMap;

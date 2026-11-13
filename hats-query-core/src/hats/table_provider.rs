@@ -14,14 +14,14 @@ use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
 /// DataFusion table of a HATS catalog or collection.
-pub(crate) struct HatsTableProvider {
+pub struct HatsTableProvider {
     hats: Arc<Hats>,
     /// The schema of the primary catalog, loaded upfront because `TableProvider::schema` is sync.
     schema: SchemaRef,
 }
 
 impl HatsTableProvider {
-    pub(crate) async fn new(hats: Arc<Hats>) -> DFResult<Self> {
+    pub async fn new(hats: Arc<Hats>) -> DFResult<Self> {
         let schema = hats.metadata().await?.schema();
         Ok(Self { hats, schema })
     }

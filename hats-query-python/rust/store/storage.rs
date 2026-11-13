@@ -1,8 +1,7 @@
-use crate::store::location::Location;
 use crate::store::mount_tree::MountTree;
-use crate::store::store_path::StorePath;
 use datafusion::common::Result as DFResult;
 use datafusion::prelude::SessionContext;
+use hats_query_core::store::{Location, StorePath};
 
 /// The storage system, which resolves locations and registers stores with DataFusion sessions.
 pub(crate) struct Storage {

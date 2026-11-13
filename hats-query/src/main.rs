@@ -1,3 +1,3 @@
 fn main() {
-    println!("{}", hats_query_core::greeting());
+    println!("Hello from hats-query");
 }

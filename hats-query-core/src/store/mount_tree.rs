@@ -1,11 +1,11 @@
+use crate::configuration::{MountConfig, MountSource};
+use crate::store::StorePath;
 use datafusion::common::Result as DFResult;
 use datafusion::error::DataFusionError;
 use datafusion::execution::object_store::ObjectStoreUrl;
 use datafusion::object_store::path::Path;
 use datafusion::prelude::SessionContext;
-use hats_query_core::store::StorePath;
 use opendal::services;
-use pyo3::prelude::*;
 use std::collections::BTreeMap;
 
 /// URL scheme of the mount stores, see `mount_host` for the host.
@@ -25,24 +25,21 @@ impl MountTree {
         let n_mounts = mount_configs.len();
         for (index, mount_config) in mount_configs.into_iter().enumerate() {
             // "/" has no segments, so it folds to the root itself
-            let node = mount_config
-                .path
-                .split("/")
-                .map(|s| s.to_string())
-                .filter(|s| !s.is_empty())
-                .fold(&mut root, |node, segment| {
-                    node.children.entry(segment).or_insert_with(|| MountNode {
+            let node = mount_config.path.parts().fold(&mut root, |node, segment| {
+                node.children
+                    .entry(segment.as_ref().to_owned())
+                    .or_insert_with(|| MountNode {
                         mount: None,
                         children: BTreeMap::new(),
                     })
-                });
+            });
             if node.mount.is_some() {
                 return Err(DataFusionError::Configuration(format!(
-                    "Duplicate mount path '{}'",
+                    "Duplicate mount path '/{}'",
                     mount_config.path
                 )));
             }
-            let host = mount_host(index, n_mounts, &mount_config.path);
+            let host = mount_host(index, n_mounts, mount_config.path.as_ref());
             node.mount = Some(Mount::new(&host, &mount_config.source)?);
         }
 
@@ -138,14 +135,22 @@ struct Mount {
 }
 
 impl Mount {
-    /// Builds a store rooted at `source`, an absolute local path, with the URL "mount://{host}".
-    fn new(host: &str, source: &str) -> DFResult<Self> {
-        if !std::path::Path::new(source).is_absolute() {
-            return Err(DataFusionError::Configuration(format!(
-                "Mount source '{source}' is not supported yet, only local directories are"
-            )));
-        }
-        let opendal_operator = opendal::Operator::new(services::Fs::default().root(source))
+    /// Builds a store rooted at `source`, a local directory, with the URL "mount://{host}".
+    fn new(host: &str, source: &MountSource) -> DFResult<Self> {
+        let root = match source {
+            MountSource::Local(path) => path.to_str().ok_or_else(|| {
+                DataFusionError::Configuration(format!(
+                    "Mount source '{}' is not valid UTF-8",
+                    path.display()
+                ))
+            })?,
+            MountSource::Remote(url) => {
+                return Err(DataFusionError::Configuration(format!(
+                    "Mount source '{url}' is not supported yet, only local directories are"
+                )));
+            }
+        };
+        let opendal_operator = opendal::Operator::new(services::Fs::default().root(root))
             .map_err(|err| DataFusionError::External(Box::new(err)))?;
         Ok(Self {
             url: ObjectStoreUrl::parse(format!("{MOUNT_SCHEME}://{host}"))?,
@@ -159,31 +164,17 @@ impl Mount {
     }
 }
 
-#[derive(FromPyObject)]
-pub(crate) struct MountConfig {
-    path: String,
-    source: String,
-}
-
-#[cfg(test)]
-impl MountConfig {
-    pub(crate) fn new(path: impl Into<String>, source: impl Into<String>) -> Self {
-        Self {
-            path: path.into(),
-            source: source.into(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+    use url::Url;
 
     /// A mount of the crate directory: opendal's fs service would create a missing one.
     fn mount_config(path: &str) -> MountConfig {
         MountConfig {
-            path: path.to_string(),
-            source: env!("CARGO_MANIFEST_DIR").to_string(),
+            path: Path::parse(path).unwrap(),
+            source: MountSource::Local(PathBuf::from(env!("CARGO_MANIFEST_DIR"))),
         }
     }
 
@@ -398,8 +389,8 @@ mod tests {
     #[test]
     fn remote_source_unsupported() {
         let config = MountConfig {
-            path: "/hats".to_string(),
-            source: "s3://bucket/prefix".to_string(),
+            path: Path::parse("/hats").unwrap(),
+            source: MountSource::Remote(Url::parse("s3://bucket/prefix").unwrap()),
         };
         let result = MountTree::from_mount_configs(vec![config]);
         assert!(matches!(result, Err(DataFusionError::Configuration(_))));

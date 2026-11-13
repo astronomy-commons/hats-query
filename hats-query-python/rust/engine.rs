@@ -1,16 +1,12 @@
 use crate::exceptions::datafusion_error_to_py_exception;
 use crate::output::{PyAsyncRecordBatchIterator, RecordBatchIterator, SyncableRecordBatchStream};
-use crate::store::mount_tree::{MountConfig, MountTree};
-use crate::store::storage::Storage;
-use crate::tap::{KnownTables, TapTableConfig};
 use async_trait::async_trait;
-use bytes::Bytes;
 use datafusion::common::Result as DFResult;
-use datafusion::object_store::path::Path;
-use datafusion::prelude::SessionContext;
-use hats_query_core::adql::{AdqlContext as _, register_adql};
-use hats_query_core::store::Location;
+use hats_query_core::Engine;
+use hats_query_core::configuration::{MountConfig, TapTableConfig};
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3::types::PyDict;
 use pyo3_async_runtimes::tokio::future_into_py;
 use std::sync::Arc;
 use tokio::sync::{Mutex, OnceCell};
@@ -20,75 +16,43 @@ pub(crate) struct PyEngine {
     inner: Arc<Engine>,
 }
 
-pub(crate) struct Engine {
-    storage: Storage,
-    tables: KnownTables,
-    /// DataFusion session with ADQL functions and TAP tables, lazily initialized.
-    ctx: OnceCell<SessionContext>,
-}
-
-/// Builds an engine with the given mount configurations.
-///
-/// Parameters
-/// ----------
-/// mount_configs : list of MountConfig
-///     The mount configurations to use
-/// tap_table_configs : list of TapTableConfig
-///     The TAP table configurations to use
-///
-/// Returns
-/// -------
-/// Engine
-#[pyfunction]
-pub(crate) fn build_engine(
-    mount_configs: Vec<MountConfig>,
-    tap_table_configs: Vec<TapTableConfig>,
-) -> PyResult<PyEngine> {
-    let engine =
-        Engine::new(mount_configs, tap_table_configs).map_err(datafusion_error_to_py_exception)?;
-    Ok(PyEngine {
-        inner: Arc::new(engine),
-    })
-}
-
-impl Engine {
-    pub(crate) fn new(
-        mount_configs: Vec<MountConfig>,
-        tap_table_configs: Vec<TapTableConfig>,
-    ) -> DFResult<Self> {
-        let storage = Storage::new(MountTree::from_mount_configs(mount_configs)?);
-        let tables = KnownTables::from_tap_table_configs(&storage, tap_table_configs)?;
+#[pymethods]
+impl PyEngine {
+    /// Query engine serving HATS catalogs from mounted directories.
+    ///
+    /// Parameters
+    /// ----------
+    /// mounts : dict[str, str]
+    ///     Server paths, e.g. "/hats", mapped to the directories served under them. A relative
+    ///     local directory is resolved against the current working directory.
+    /// tables : dict[str, str]
+    ///     Table names, e.g. "schema.table", mapped to the server paths of their HATS catalogs,
+    ///     e.g. "/hats/catalog".
+    #[new]
+    fn new(mounts: &Bound<PyDict>, tables: &Bound<PyDict>) -> PyResult<Self> {
+        let base_dir = std::env::current_dir()?;
+        let mounts = mounts
+            .iter()
+            .map(|(path, source)| {
+                let path: String = path.extract()?;
+                MountConfig::new(&path, source.extract()?, &base_dir)
+                    .map_err(|err| PyValueError::new_err(format!("mount {path}: {err}")))
+            })
+            .collect::<PyResult<_>>()?;
+        let tables = tables
+            .iter()
+            .map(|(name, path)| {
+                let name: String = name.extract()?;
+                TapTableConfig::new(name.clone(), &path.extract::<String>()?)
+                    .map_err(|err| PyValueError::new_err(format!("table {name}: {err}")))
+            })
+            .collect::<PyResult<_>>()?;
+        let engine = Engine::new(mounts, tables).map_err(datafusion_error_to_py_exception)?;
         Ok(Self {
-            storage,
-            tables,
-            ctx: OnceCell::new(),
+            inner: Arc::new(engine),
         })
     }
 
-    pub(crate) async fn ctx(self: &Arc<Self>) -> DFResult<&SessionContext> {
-        self.ctx
-            .get_or_try_init(async || {
-                let ctx = SessionContext::new();
-                register_adql(&ctx);
-                self.storage.register_object_stores(&ctx);
-                self.tables.register_tap_schema_tables(&ctx).await?;
-                self.tables.register_hats_tables(&ctx).await?;
-                Ok(ctx)
-            })
-            .await
-    }
-
-    /// Reads the whole object at `path`, a server path inside the mounts.
-    pub(crate) async fn read_bytes(&self, path: &Path) -> DFResult<Bytes> {
-        self.storage
-            .resolve(&Location::Mounted(path.clone()))?
-            .read_bytes()
-            .await
-    }
-}
-
-#[pymethods]
-impl PyEngine {
     /// Reads bytes from the given path inside the mounted paths.
     ///
     /// Parameters
@@ -145,11 +109,7 @@ struct QueryRecordBatchIterator {
 impl RecordBatchIterator for QueryRecordBatchIterator {
     async fn get_stream(&self) -> DFResult<&SyncableRecordBatchStream> {
         self.stream
-            .get_or_try_init(async || {
-                let ctx = self.engine.ctx().await?;
-                let stream = ctx.adql(&self.adql).await?.execute_stream().await?;
-                Ok(Mutex::new(stream))
-            })
+            .get_or_try_init(async || Ok(Mutex::new(self.engine.query(&self.adql).await?)))
             .await
     }
 }

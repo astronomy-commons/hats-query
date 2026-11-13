@@ -1,7 +1,8 @@
+use crate::configuration::MountConfig;
 use crate::store::mount_tree::MountTree;
+use crate::store::{Location, StorePath};
 use datafusion::common::Result as DFResult;
 use datafusion::prelude::SessionContext;
-use hats_query_core::store::{Location, StorePath};
 
 /// The storage system, which resolves locations and registers stores with DataFusion sessions.
 pub(crate) struct Storage {
@@ -11,8 +12,10 @@ pub(crate) struct Storage {
 }
 
 impl Storage {
-    pub(crate) fn new(mounts: MountTree) -> Self {
-        Self { mounts }
+    pub(crate) fn from_mount_configs(mount_configs: Vec<MountConfig>) -> DFResult<Self> {
+        Ok(Self {
+            mounts: MountTree::from_mount_configs(mount_configs)?,
+        })
     }
 
     /// Registers the stores known upfront, i.e. the mounts, in the session.
@@ -31,13 +34,17 @@ impl Storage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::store::mount_tree::MountConfig;
     use datafusion::object_store::path::Path;
 
     /// A storage with the crate directory mounted at "/data".
     fn storage() -> Storage {
-        let mount = MountConfig::new("/data", env!("CARGO_MANIFEST_DIR"));
-        Storage::new(MountTree::from_mount_configs(vec![mount]).unwrap())
+        let mount = MountConfig::new(
+            "/data",
+            env!("CARGO_MANIFEST_DIR").to_owned(),
+            std::path::Path::new(""),
+        )
+        .unwrap();
+        Storage::from_mount_configs(vec![mount]).unwrap()
     }
 
     #[test]

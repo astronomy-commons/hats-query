@@ -1744,11 +1744,9 @@ version = "0.0.0"
 dependencies = [
  "arrow-pyarrow",
  "async-trait",
- "bytes",
  "datafusion",
  "futures-util",
  "hats-query-core",
- "opendal",
  "pyo3",
  "pyo3-async-runtimes",
  "tokio",

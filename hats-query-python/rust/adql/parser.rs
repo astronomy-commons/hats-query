@@ -149,8 +149,8 @@ mod tests {
 
         /// Sorted paths of the Lyonetia IVOA XML files
         fn get_xml_paths() -> Vec<PathBuf> {
-            let ivoa_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("tests/data/git-submodules/lyonetia/src/adql/ivoa");
+            let ivoa_dir = Path::new(crate::tests::util::WORKSPACE_ROOT)
+                .join("test-data/git-submodules/lyonetia/src/adql/ivoa");
             let mut paths: Vec<_> = std::fs::read_dir(&ivoa_dir)
                 .expect("Failed to read Lyonetia IVOA directory")
                 .map(|entry| {

@@ -1,0 +1,13 @@
+[package]
+name = "hats-query"
+description = "Server for querying HATS catalogs through VO and HTTP"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+hats-query-core.workspace = true
+
+[lints]
+workspace = true

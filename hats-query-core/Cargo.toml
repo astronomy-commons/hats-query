@@ -1,0 +1,12 @@
+[package]
+name = "hats-query-core"
+description = "Common code of the hats-query server and its Python bindings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

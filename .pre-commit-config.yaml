@@ -20,7 +20,7 @@ repos:
         exclude: ^docs/pre_executed
         stages: [pre-commit]
         language: system
-        entry: jupyter nbconvert --clear-output
+        entry: uv run jupyter nbconvert --clear-output
     # Run a series of standard precommit checks, including:
     #  - no commits to branches named 'main' and 'master'.
     #  - No large files (>= 500kb)
@@ -36,6 +36,8 @@ repos:
         name: Check for large files
         description: Prevent the user from committing very large files.
         args: ['--maxkb=500']
+        # Generated lockfile
+        exclude: ^uv\.lock$
       - id: check-toml
         name: Validate TOML files
       - id: check-yaml
@@ -80,17 +82,18 @@ repos:
         verbose: true
         args:
           ["docs/pre_executed/"]
-    # Run unit tests, verify that they pass. Note that coverage is run against
-    # the ./src directory here because that is what will be committed. In the
+    # Run Python unit and integration tests, verify that they pass. Note that coverage is run against
+    # the source directory here because that is what will be committed. In the
     # github workflow script, the coverage is run against the installed package
     # and uploaded to Codecov by calling pytest like so:
-    # `python -m pytest --cov=<package_name> --cov-report=xml`
+    # `uv run pytest --cov=<package_name> --cov-report=xml`
+    # `uv run` rebuilds the Rust extension if its code has changed.
   - repo: local
     hooks:
       - id: pytest-check
         name: Run unit tests
-        description: Run unit tests with pytest.
-        entry: bash -c "if python -m pytest --co -qq; then python -m pytest --cov=./src --cov-report=html; fi"
+        description: Run Python unit and integration tests with pytest.
+        entry: bash -c "if uv run pytest --co -qq; then uv run pytest --cov=./hats-query-python/python --cov-report=html; fi"
         language: system
         pass_filenames: false
         always_run: true

@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from hats_query.server import create_app
 from hats_query.server.config import Config
 
-IVOA_SCHEMAS_DIR = Path(__file__).parent.parent / "data" / "ivoa-schemas"
+IVOA_SCHEMAS_DIR = Path(__file__).parents[2] / "test-data" / "ivoa-schemas"
 # Imported namespaces from local files, not their remote schemaLocation
 IVOA_SCHEMA_LOCATIONS = {
     "http://www.ivoa.net/xml/VOResource/v1.0": str(IVOA_SCHEMAS_DIR / "VOResource-v1.3.xsd"),

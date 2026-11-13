@@ -1,13 +1,16 @@
 [package]
 name = "hats-query"
-description = "Server for querying HATS catalogs through VO and HTTP"
+description = "Server for querying HATS catalogs and Parquet files"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
 [dependencies]
+axum.workspace = true
+clap.workspace = true
 hats-query-core.workspace = true
+tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread"] }
 
 [lints]
 workspace = true

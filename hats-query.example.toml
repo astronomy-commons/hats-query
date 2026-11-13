@@ -9,7 +9,7 @@ developer_mode = false
 contact = "ops@example.org"
 
 [log]
-# critical, error, warning, info, debug, or trace
+# error, warn, info, debug, or trace
 level = "info"
 
 # Directories this service reads, maps "source" URL to "path" endpoint.

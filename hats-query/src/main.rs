@@ -1,9 +1,18 @@
+mod logging;
+
+use anyhow::Context as _;
 use axum::Router;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse as _, Response};
 use clap::Parser;
 use hats_query_core::configuration::Configuration;
-use std::error::Error;
+use std::any::Any;
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use tokio::net::TcpListener;
+use tower_http::catch_panic::CatchPanicLayer;
+use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
+use tracing::Level;
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -14,10 +23,75 @@ struct Cli {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    let config = Configuration::load(&cli.config)?;
-    let listener = TcpListener::bind((config.server.address, config.server.port)).await?;
-    axum::serve(listener, Router::new()).await?;
+    let config = Configuration::load(&cli.config)
+        .with_context(|| format!("cannot load config {}", cli.config.display()))?;
+    logging::init(config.log.level);
+    let address = SocketAddr::new(config.server.address, config.server.port);
+    let listener = TcpListener::bind(address)
+        .await
+        .with_context(|| format!("cannot listen on {address}"))?;
+    tracing::info!("listening on {address}");
+    axum::serve(listener, app(Router::new(), config.server.developer_mode))
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+        .context("server failed")?;
     Ok(())
+}
+
+/// Wrap `routes` with the middleware: request logging, and panics turned into 500 responses.
+fn app(routes: Router, developer_mode: bool) -> Router {
+    routes
+        .layer(CatchPanicLayer::custom(move |panic| {
+            panic_response(panic, developer_mode)
+        }))
+        // The outermost layer, so it logs the responses of caught panics too. The span holds the
+        // method and path, it must be enabled at the level of the response record to show them.
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
+                .on_response(DefaultOnResponse::new().level(Level::INFO)),
+        )
+}
+
+/// A 500 response to a panic, with the panic message in `developer_mode` only.
+///
+/// The panic itself is logged by the panic hook, see `logging::init`.
+fn panic_response(panic: Box<dyn Any + Send>, developer_mode: bool) -> Response {
+    let body = if developer_mode {
+        if let Some(message) = panic.downcast_ref::<String>() {
+            message.clone()
+        } else if let Some(message) = panic.downcast_ref::<&str>() {
+            (*message).to_owned()
+        } else {
+            "panic with a non-string payload".to_owned()
+        }
+    } else {
+        "Internal Server Error".to_owned()
+    };
+    (StatusCode::INTERNAL_SERVER_ERROR, body).into_response()
+}
+
+/// Wait for Ctrl-C, or SIGTERM on Unix.
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to listen for Ctrl-C");
+    };
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to listen for SIGTERM")
+            .recv()
+            .await;
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+    tokio::select! {
+        () = ctrl_c => {},
+        () = terminate => {},
+    }
+    tracing::info!("shutting down");
 }

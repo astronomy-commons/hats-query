@@ -17,8 +17,6 @@ on:
 permissions: {}
 
 env:
-  # Build the Rust extension in debug mode
-  SETUPTOOLS_RUST_CARGO_PROFILE: dev
   # Display full backtrace for rust panic
   RUST_BACKTRACE: 1
 
@@ -37,8 +35,8 @@ jobs:
       with:
         persist-credentials: false
         submodules: true
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+    - name: Install uv and Python ${{ matrix.python-version }}
+      uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
       with:
         python-version: ${{ matrix.python-version }}
     - name: Set up Rust toolchain
@@ -48,17 +46,14 @@ jobs:
     - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       with:
         shared-key: "${{ runner.os }}_debug"
-    - name: Install uv
-      uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
     - name: Install STILTS
       run: |
         curl -fsSL -o ~/stilts.jar https://www.star.bris.ac.uk/~mbt/stilts/stilts.jar
         echo "STILTS=java -jar $HOME/stilts.jar" >> "$GITHUB_ENV"
-    - name: Install dependencies
+    - name: Install the latest versions of dependencies, ignoring uv.lock
       run: |
         sudo apt-get update
-        uv pip install --system -e .[dev]
-        if [ -f requirements.txt ]; then uv pip install --system -r requirements.txt; fi
+        uv sync --upgrade --all-packages --no-default-groups --group test
     - name: Run cargo clippy
       run: |
         cargo clippy --all-targets -- -D warnings
@@ -67,7 +62,7 @@ jobs:
         cargo test
     - name: List dependencies
       run: |
-        pip list
-    - name: Run unit tests with pytest
+        uv pip list
+    - name: Run unit and integration tests with pytest
       run: |
-        python -m pytest -o log_cli=true -vv -m ""
+        uv run --no-sync pytest -o log_cli=true -vv -m ""

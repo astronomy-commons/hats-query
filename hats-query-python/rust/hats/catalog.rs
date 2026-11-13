@@ -373,7 +373,7 @@ mod tests {
     use super::*;
     use crate::engine::Engine;
     use crate::table_metadata::ColumnMetadata;
-    use crate::tests::util::{engine, test_data_location, test_data_path};
+    use crate::tests::util::{WORKSPACE_ROOT, engine, test_data_location, test_data_path};
     use datafusion::prelude::{ParquetReadOptions, SessionContext};
 
     fn field_names(schema: &SchemaRef) -> Vec<&str> {
@@ -511,7 +511,7 @@ mod tests {
 
     /// Number of rows in the test data file at `path`, read directly from the local filesystem.
     async fn count_rows_locally(path: &str) -> usize {
-        let path = format!("{}/{}", env!("CARGO_MANIFEST_DIR"), test_data_path(path));
+        let path = format!("{WORKSPACE_ROOT}/{}", test_data_path(path));
         SessionContext::new()
             .read_parquet(path, ParquetReadOptions::default())
             .await

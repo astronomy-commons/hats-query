@@ -1,0 +1,39 @@
+[package]
+name = "hats-query-python"
+description = "Python bindings for hats-query, built into the hats_query._extension module"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+# Distributed as a Python package only, see pyproject.toml
+publish = false
+
+[lib]
+name = "_extension"
+crate-type = ["cdylib"]
+path = "rust/lib.rs"
+
+[dependencies]
+arrow-pyarrow.workspace = true
+async-trait.workspace = true
+bytes.workspace = true
+datafusion.workspace = true
+futures-util.workspace = true
+java-properties.workspace = true
+itertools.workspace = true
+moka.workspace = true
+object_store_opendal.workspace = true
+opendal.workspace = true
+pyo3.workspace = true
+pyo3-async-runtimes.workspace = true
+tokio.workspace = true
+url.workspace = true
+votable.workspace = true
+
+[dev-dependencies]
+approx.workspace = true
+roxmltree.workspace = true
+tokio = { workspace = true, features = ["macros"] }
+
+[lints]
+workspace = true

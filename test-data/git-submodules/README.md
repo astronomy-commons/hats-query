@@ -4,7 +4,7 @@ They are excluded from pytest collection and ruff, do not modify them.
 | Directory | Source | License | Used by |
 |-----------|--------|---------|---------|
 | `hats` | [astronomy-commons/hats](https://github.com/astronomy-commons/hats) | [BSD-3-Clause](https://github.com/astronomy-commons/hats/blob/main/LICENSE) | Example HATS catalogs from `tests/data/` |
-| `lyonetia` | [ivoa/lyonetia](https://github.com/ivoa/lyonetia) | [GPL-3.0](https://github.com/ivoa/lyonetia/blob/master/LICENSE) | ADQL parser tests over `src/adql/ivoa/`, see `rust/adql/parser.rs` |
+| `lyonetia` | [ivoa/lyonetia](https://github.com/ivoa/lyonetia) | [GPL-3.0](https://github.com/ivoa/lyonetia/blob/master/LICENSE) | ADQL parser tests over `src/adql/ivoa/`, see `hats-query-python/rust/adql/parser.rs` |
 
-To bump a submodule, run `git submodule update --remote tests/data/git-submodules/<directory>`
+To bump a submodule, run `git submodule update --remote test-data/git-submodules/<directory>`
 and commit the new pointer.

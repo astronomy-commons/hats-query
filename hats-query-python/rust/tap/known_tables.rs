@@ -1,13 +1,13 @@
-use crate::hats::{Hats, HatsTableProvider};
-use crate::store::location::Location;
 use crate::store::storage::Storage;
-use crate::tap::tap_schema::{TAP_SCHEMA, TapSchema};
 use datafusion::catalog::MemorySchemaProvider;
 use datafusion::common::{DataFusionError, Result as DFResult, TableReference};
 use datafusion::datasource::MemTable;
 use datafusion::object_store::path::Path;
 use datafusion::prelude::SessionContext;
 use futures_util::future::try_join_all;
+use hats_query_core::hats::{Hats, HatsTableProvider};
+use hats_query_core::store::Location;
+use hats_query_core::tap::{TAP_SCHEMA, TapSchema};
 use pyo3::FromPyObject;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -98,9 +98,9 @@ pub(crate) struct TapTableConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adql::AdqlContext;
     use crate::tests::util::{storage, test_data_location, test_data_path};
     use datafusion::arrow::array::AsArray;
+    use hats_query_core::adql::AdqlContext;
 
     #[tokio::test]
     async fn register_tap_schema_tables() {

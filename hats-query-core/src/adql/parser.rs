@@ -78,11 +78,11 @@ async fn adql_query_to_plan(
 ///
 /// DataFusion doesn't support registering custom parser dialects, so we parse with
 /// [`AdqlDialect`] ourselves and pass the statement to DataFusion's planner.
-pub(crate) trait AdqlContext {
+pub trait AdqlContext {
     /// Creates a DataFrame for the ADQL query.
     ///
     /// Only read-only queries are allowed: DDL, DML and other statements are rejected.
-    async fn adql(&self, query: &str) -> DFResult<DataFrame>;
+    fn adql(&self, query: &str) -> impl Future<Output = DFResult<DataFrame>> + Send;
 }
 
 impl AdqlContext for SessionContext {

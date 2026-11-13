@@ -1,4 +1,4 @@
-use crate::store::store_path::StorePath;
+use crate::store::StorePath;
 use datafusion::common::{DataFusionError, Result as DFResult};
 use itertools::Itertools;
 use std::collections::{BTreeMap, HashMap};

@@ -1707,13 +1707,8 @@ dependencies = [
 [[package]]
 name = "hats-query-core"
 version = "0.0.0"
-
-[[package]]
-name = "hats-query-python"
-version = "0.0.0"
 dependencies = [
  "approx",
- "arrow-pyarrow",
  "async-trait",
  "bytes",
  "datafusion",
@@ -1723,12 +1718,26 @@ dependencies = [
  "moka",
  "object_store_opendal",
  "opendal",
- "pyo3",
- "pyo3-async-runtimes",
  "roxmltree",
  "tokio",
  "url",
  "votable",
+]
+
+[[package]]
+name = "hats-query-python"
+version = "0.0.0"
+dependencies = [
+ "arrow-pyarrow",
+ "async-trait",
+ "bytes",
+ "datafusion",
+ "futures-util",
+ "hats-query-core",
+ "opendal",
+ "pyo3",
+ "pyo3-async-runtimes",
+ "tokio",
 ]
 
 [[package]]

@@ -19,20 +19,13 @@ async-trait.workspace = true
 bytes.workspace = true
 datafusion.workspace = true
 futures-util.workspace = true
-java-properties.workspace = true
-itertools.workspace = true
-moka.workspace = true
-object_store_opendal.workspace = true
+hats-query-core.workspace = true
 opendal.workspace = true
 pyo3.workspace = true
 pyo3-async-runtimes.workspace = true
 tokio.workspace = true
-url.workspace = true
-votable.workspace = true
 
 [dev-dependencies]
-approx.workspace = true
-roxmltree.workspace = true
 tokio = { workspace = true, features = ["macros"] }
 
 [lints]

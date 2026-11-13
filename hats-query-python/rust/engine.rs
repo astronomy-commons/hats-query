@@ -1,7 +1,5 @@
-use crate::adql::{AdqlContext as _, register_adql};
 use crate::exceptions::datafusion_error_to_py_exception;
 use crate::output::{PyAsyncRecordBatchIterator, RecordBatchIterator, SyncableRecordBatchStream};
-use crate::store::location::Location;
 use crate::store::mount_tree::{MountConfig, MountTree};
 use crate::store::storage::Storage;
 use crate::tap::{KnownTables, TapTableConfig};
@@ -10,6 +8,8 @@ use bytes::Bytes;
 use datafusion::common::Result as DFResult;
 use datafusion::object_store::path::Path;
 use datafusion::prelude::SessionContext;
+use hats_query_core::adql::{AdqlContext as _, register_adql};
+use hats_query_core::store::Location;
 use pyo3::prelude::*;
 use pyo3_async_runtimes::tokio::future_into_py;
 use std::sync::Arc;

@@ -10,5 +10,5 @@ mod top;
 
 use common::ADQL_UDF_PREFIX;
 pub(crate) use identifier::delimit_if_needed;
-pub(crate) use parser::AdqlContext;
-pub(crate) use register::register_adql;
+pub use parser::AdqlContext;
+pub use register::register_adql;

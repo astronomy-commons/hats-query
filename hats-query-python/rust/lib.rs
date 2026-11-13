@@ -1,14 +1,9 @@
-mod adql;
-mod arrow_votable;
-mod common;
 mod engine;
 mod exceptions;
-mod hats;
 mod output;
 mod parquet;
 mod store;
 mod sums;
-mod table_metadata;
 mod tap;
 #[cfg(test)]
 mod tests;

@@ -1,6 +1,6 @@
 use crate::common::{SingleCache, parquet_schema_from_bytes};
 use crate::hats::properties::{CollectionProperties, HatsProperties, IndexProperties, Properties};
-use crate::store::store_path::StorePath;
+use crate::store::StorePath;
 use crate::table_metadata::TableMetadata;
 use datafusion::arrow::datatypes::{Schema, SchemaRef};
 use datafusion::common::Result as DFResult;
@@ -15,7 +15,7 @@ const DATASET_DIR: &str = "dataset";
 const SCHEMA_FILE: &str = "_common_metadata";
 
 /// Representation of a HATS collection or catalog.
-pub(crate) struct Hats {
+pub struct Hats {
     /// Location specified by the user/config, it may point to a collection or a catalog.
     discovery_location: StorePath,
     /// Lazily initialized inner representation of the HATS collection or catalog.
@@ -32,7 +32,7 @@ impl Hats {
     /// directory tree, but for now we require the user to specify the location explicitly.
     ///
     /// It is shared, so all its users benefit from the lazily loaded data.
-    pub(crate) fn new(discovery_location: StorePath) -> Arc<Self> {
+    pub fn new(discovery_location: StorePath) -> Arc<Self> {
         Arc::new(Self {
             discovery_location,
             inner: SingleCache::new(),
@@ -49,7 +49,7 @@ impl Hats {
             .await
     }
 
-    pub(crate) async fn metadata(&self) -> DFResult<Arc<TableMetadata>> {
+    pub async fn metadata(&self) -> DFResult<Arc<TableMetadata>> {
         self.get_inner().await?.metadata().await
     }
 
@@ -423,25 +423,23 @@ trait CatalogDir: Sized {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::Engine;
-    use crate::store::location::Location;
-    use crate::store::mount_tree::{MountConfig, MountTree};
-    use crate::store::storage::Storage;
     use crate::table_metadata::ColumnMetadata;
-    use crate::tests::util::{WORKSPACE_ROOT, engine, test_data_location, test_data_path};
+    use crate::tests::util::{WORKSPACE_ROOT, test_data_location, test_data_path};
+    use datafusion::execution::object_store::ObjectStoreUrl;
     use datafusion::object_store::path::Path;
     use datafusion::prelude::{ParquetReadOptions, SessionContext};
+    use opendal::services;
 
     fn field_names(schema: &SchemaRef) -> Vec<&str> {
         schema.fields().iter().map(|f| f.name().as_str()).collect()
     }
 
-    /// The location of a local directory, mounted at "/".
+    /// The location of a local directory, in a store rooted at it.
     fn local_dir_location(dir: &std::path::Path) -> StorePath {
-        let mount = MountConfig::new("/", dir.to_str().unwrap());
-        Storage::new(MountTree::from_mount_configs(vec![mount]).unwrap())
-            .resolve(&Location::Mounted(Path::from("")))
-            .unwrap()
+        let operator =
+            opendal::Operator::new(services::Fs::default().root(dir.to_str().unwrap())).unwrap();
+        let store_url = ObjectStoreUrl::parse("mount://temp").unwrap();
+        StorePath::new(operator, store_url, Path::from(""))
     }
 
     /// A temporary catalog directory, with the given "hats.properties" contents and the schema
@@ -589,14 +587,13 @@ mod tests {
         );
     }
 
-    /// Number of rows in `file` inside `location`, read by URL through the engine's session.
-    async fn count_rows_by_url(engine: &Arc<Engine>, location: &StorePath, file: &str) -> usize {
+    /// Number of rows in `file` inside `location`, read by URL through a session with the
+    /// location's store registered.
+    async fn count_rows_by_url(location: &StorePath, file: &str) -> usize {
         let url = format!("{}/{file}", location.url());
-        engine
-            .ctx()
-            .await
-            .unwrap()
-            .read_parquet(url, ParquetReadOptions::default())
+        let ctx = SessionContext::new();
+        ctx.register_object_store(location.store_url().as_ref(), location.object_store());
+        ctx.read_parquet(url, ParquetReadOptions::default())
             .await
             .unwrap()
             .count()
@@ -618,7 +615,6 @@ mod tests {
 
     #[tokio::test]
     async fn catalog_location() {
-        let engine = engine();
         let hats = Hats::new(test_data_location("small_sky_o1_collection"));
         let location = hats.catalog_location().await.unwrap();
         assert_eq!(
@@ -628,14 +624,13 @@ mod tests {
 
         let file = "dataset/Norder=1/Dir=0/Npix=44.parquet";
         assert_eq!(
-            count_rows_by_url(&engine, &location, file).await,
+            count_rows_by_url(&location, file).await,
             count_rows_locally(&format!("small_sky_o1_collection/small_sky_order1/{file}")).await
         );
     }
 
     #[tokio::test]
     async fn index_location() {
-        let engine = engine();
         let hats = Hats::new(test_data_location("small_sky_o1_collection"));
         let location = hats.index_location("id").await.unwrap().unwrap();
         assert_eq!(
@@ -645,7 +640,7 @@ mod tests {
 
         let file = "dataset/index/part.0.parquet";
         assert_eq!(
-            count_rows_by_url(&engine, &location, file).await,
+            count_rows_by_url(&location, file).await,
             count_rows_locally(&format!(
                 "small_sky_o1_collection/small_sky_order1_id_index/{file}"
             ))

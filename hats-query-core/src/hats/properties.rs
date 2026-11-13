@@ -1,4 +1,4 @@
-use crate::store::store_path::StorePath;
+use crate::store::StorePath;
 use datafusion::common::{DataFusionError, Result as DFResult};
 use datafusion::object_store;
 use itertools::Itertools;

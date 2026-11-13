@@ -1,4 +1,3 @@
-use crate::adql::{AdqlContext as _, register_adql};
 use crate::exceptions::datafusion_error_to_py_exception;
 use crate::output::{PyAsyncRecordBatchIterator, RecordBatchIterator, SyncableRecordBatchStream};
 use arrow_pyarrow::PyArrowType;
@@ -11,6 +10,7 @@ use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
 use datafusion::prelude::*;
 use futures_util::StreamExt as _;
 use futures_util::future;
+use hats_query_core::adql::{AdqlContext as _, register_adql};
 use pyo3::prelude::*;
 use pyo3_async_runtimes::tokio::future_into_py;
 use std::path::PathBuf;

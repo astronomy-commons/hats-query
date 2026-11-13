@@ -10,18 +10,14 @@ use url::Url;
 /// A location inside an object store: the store's OpenDAL operator, the URL the store is
 /// registered under in a session, and the path inside the store.
 #[derive(Clone, Debug)]
-pub(crate) struct StorePath {
+pub struct StorePath {
     opendal_operator: opendal::Operator,
     store_url: ObjectStoreUrl,
     path: Path,
 }
 
 impl StorePath {
-    pub(crate) fn new(
-        opendal_operator: opendal::Operator,
-        store_url: ObjectStoreUrl,
-        path: Path,
-    ) -> Self {
+    pub fn new(opendal_operator: opendal::Operator, store_url: ObjectStoreUrl, path: Path) -> Self {
         Self {
             opendal_operator,
             store_url,
@@ -30,20 +26,19 @@ impl StorePath {
     }
 
     /// The URL the store is registered under in a session.
-    pub(crate) fn store_url(&self) -> &ObjectStoreUrl {
+    pub fn store_url(&self) -> &ObjectStoreUrl {
         &self.store_url
     }
 
-    #[allow(dead_code)] // Remove when used
     /// The path inside the store.
-    pub(crate) fn path(&self) -> &Path {
+    pub fn path(&self) -> &Path {
         &self.path
     }
 
     /// The location of `child` inside this location, in the same store.
     ///
     /// `child` is a single path segment, see `Path::join`.
-    pub(crate) fn join<'a>(&self, child: impl Into<PathPart<'a>>) -> Self {
+    pub fn join<'a>(&self, child: impl Into<PathPart<'a>>) -> Self {
         Self {
             opendal_operator: self.opendal_operator.clone(),
             store_url: self.store_url.clone(),
@@ -52,12 +47,12 @@ impl StorePath {
     }
 
     /// The store as an object store.
-    pub(crate) fn object_store(&self) -> Arc<dyn ObjectStore> {
+    pub fn object_store(&self) -> Arc<dyn ObjectStore> {
         Arc::new(OpendalStore::new(self.opendal_operator.clone()))
     }
 
     /// The full URL of the location, readable by a session with the store registered.
-    pub(crate) fn url(&self) -> Url {
+    pub fn url(&self) -> Url {
         let mut url = AsRef::<Url>::as_ref(&self.store_url).clone();
         // The path is already percent-encoded, so it is kept as is
         url.set_path(&format!("/{}", self.path));
@@ -65,7 +60,7 @@ impl StorePath {
     }
 
     /// Reads the whole object at the location.
-    pub(crate) async fn read_bytes(&self) -> DFResult<Bytes> {
+    pub async fn read_bytes(&self) -> DFResult<Bytes> {
         Ok(self.object_store().get(&self.path).await?.bytes().await?)
     }
 }

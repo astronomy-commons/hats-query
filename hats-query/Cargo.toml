@@ -7,8 +7,8 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-axum.workspace = true
-clap.workspace = true
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+clap = { version = "4", features = ["derive", "env"] }
 hats-query-core.workspace = true
 tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread"] }
 

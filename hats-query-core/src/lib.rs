@@ -3,6 +3,7 @@
 pub mod adql;
 mod arrow_votable;
 mod common;
+pub mod configuration;
 pub mod hats;
 pub mod store;
 pub mod table_metadata;

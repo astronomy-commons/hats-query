@@ -16,17 +16,12 @@ path = "rust/lib.rs"
 [dependencies]
 arrow-pyarrow.workspace = true
 async-trait.workspace = true
-bytes.workspace = true
 datafusion.workspace = true
 futures-util.workspace = true
 hats-query-core.workspace = true
-opendal.workspace = true
 pyo3.workspace = true
 pyo3-async-runtimes.workspace = true
 tokio.workspace = true
-
-[dev-dependencies]
-tokio = { workspace = true, features = ["macros"] }
 
 [lints]
 workspace = true

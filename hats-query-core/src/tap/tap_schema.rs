@@ -80,7 +80,7 @@ impl TapSchema {
 }
 
 /// Returns the schema part of a "schema.table" name.
-fn schema_of(table_name: &str) -> DFResult<&str> {
+pub(crate) fn schema_of(table_name: &str) -> DFResult<&str> {
     table_name
         .split_once('.')
         .map(|(schema, _table)| schema)

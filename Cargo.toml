@@ -13,8 +13,10 @@ approx = { version = "0.5", default-features = false }
 # Must match the "arrow" version used by datafusion
 arrow-pyarrow = "59"
 async-trait = "0.1"
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 bytes = "1"
-config = { version = "0.15", default-features = false, features = ["toml"] }
+clap = { version = "4", features = ["derive", "env"] }
+config ={ version = "0.15", default-features = false, features = ["toml"] }
 datafusion = { version = "55", default-features = false, features = ["compression", "parquet", "sql"] }
 # Must match the "futures" version used by datafusion
 futures-util = "0.3"

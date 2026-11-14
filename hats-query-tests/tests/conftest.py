@@ -2,14 +2,12 @@ import subprocess
 import sys
 import time
 import urllib.request
+from collections.abc import Iterator
 from pathlib import Path
 
+import httpx2
 import pytest
 import xmlschema
-from fastapi.testclient import TestClient
-
-from hats_query.server import create_app
-from hats_query.server.config import Config
 
 IVOA_SCHEMAS_DIR = Path(__file__).parents[2] / "test-data" / "ivoa-schemas"
 # Imported namespaces from local files, not their remote schemaLocation
@@ -53,38 +51,50 @@ def vosi_tables_schema() -> xmlschema.XMLSchema:
     )
 
 
-@pytest.fixture
-def client(example_config_path) -> TestClient:
-    """Test client for a fresh hats-query application with the example config"""
-    return TestClient(create_app(Config.load(example_config_path)))
+@pytest.fixture(scope="session")
+def server_command() -> list[str]:
+    """Command running the hats-query server under test, without arguments"""
+    return [sys.executable, "-m", "hats_query"]
 
 
-@pytest.fixture(scope="module")
-def live_server_url(example_config_path):
+@pytest.fixture(scope="session")
+def live_server_url(server_command, example_config_path) -> Iterator[str]:
     """Base URL of a hats-query server running in a subprocess with the example config"""
-    port = "8321"
-    url = f"http://127.0.0.1:{port}"
+    # The port of hats-query.example.toml
+    url = "http://127.0.0.1:8321"
     process = subprocess.Popen(
         [
-            sys.executable,
-            "-m",
-            "hats_query",
+            *server_command,
             "--config",
             str(example_config_path),
-            "--server.port",
-            str(port),
-            "--log.level",
-            "warning",
         ]
     )
     for _ in range(100):
+        if process.poll() is not None:
+            raise RuntimeError(f"Live server exited with code {process.returncode}")
         try:
             urllib.request.urlopen(f"{url}/doc")
             break
         except OSError:
             time.sleep(0.1)
     else:
-        process.terminate()
+        process.kill()
+        process.wait()
         raise RuntimeError("Failed to start live server")
     yield url
+
+    # Wait up to 10 seconds for a graceful exit, then kill and fail
     process.terminate()
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+        raise RuntimeError("Live server did not shut down on SIGTERM") from None
+
+
+@pytest.fixture
+def client(live_server_url) -> Iterator[httpx2.Client]:
+    """HTTP client of the live server"""
+    with httpx2.Client(base_url=live_server_url) as client:
+        yield client

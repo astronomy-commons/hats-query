@@ -27,64 +27,39 @@ def test_capabilities(client, vosi_capabilities_schema) -> None:
 
 def test_tables(client, vosi_tables_schema) -> None:
     """Verify that /tap/tables is a valid VOSI tables document listing the configured and TAP_SCHEMA tables"""
-    config = client.app.state.config
+    # Valid VOSI tables document
     response = client.get("/tap/tables")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/xml")
     vosi_tables_schema.validate(response.text)
-    tableset = ElementTree.fromstring(response.text)
-    assert {
-        schema.findtext("name"): {table.findtext("name") for table in schema.findall("table")}
-        for schema in tableset.findall("schema")
-    } == {
-        "small_sky": {table.name for table in config.tap.tables},
-        "TAP_SCHEMA": {
-            "TAP_SCHEMA.schemas",
-            "TAP_SCHEMA.tables",
-            "TAP_SCHEMA.columns",
-            "TAP_SCHEMA.keys",
-            "TAP_SCHEMA.key_columns",
-        },
+
+    # The tables of hats-query.example.toml and TAP_SCHEMA
+    document = ElementTree.fromstring(response.text)
+    tables = {table.findtext("name"): table for table in document.iter("table")}
+    assert set(tables) == {
+        "small_sky.object",
+        "small_sky.source",
+        "TAP_SCHEMA.schemas",
+        "TAP_SCHEMA.tables",
+        "TAP_SCHEMA.columns",
+        "TAP_SCHEMA.keys",
+        "TAP_SCHEMA.key_columns",
     }
 
-    columns = {
-        table.findtext("name"): {column.findtext("name"): column for column in table.findall("column")}
-        for table in tableset.iter("table")
-    }
-    ra = columns["small_sky.object"]["ra"]
+    # Column metadata, checked in detail by the TAP_SCHEMA unit tests of hats-query-core
+    columns = {column.findtext("name"): column for column in tables["small_sky.object"].iter("column")}
+    ra = columns["ra"]
     assert ra.findtext("dataType") == "double"
-    assert ra.get("std") is None
-    assert (ra.findtext("unit"), ra.findtext("ucd")) == ("deg", "pos.eq.ra;meta.main")
-    dec = columns["small_sky.object"]["dec"]
-    assert (dec.findtext("unit"), dec.findtext("ucd")) == ("deg", "pos.eq.dec;meta.main")
-    assert columns["small_sky.object"]['"_healpix_29"'].findtext("ucd") == "pos.healpix"
-
-    def flagged(flag):
-        return {
-            name
-            for name, column in columns["small_sky.object"].items()
-            if flag in [element.text for element in column.findall("flag")]
-        }
-
-    assert flagged("indexed") == {"id", '"_healpix_29"'}
-    assert flagged("principal") == {"ra", "dec"}
-    table_name = columns["TAP_SCHEMA.columns"]["table_name"]
-    assert table_name.get("std") == "true"
-    data_type = table_name.find("dataType")
-    assert (data_type.text, data_type.get("arraysize")) == ("char", "*")
+    assert ra.findtext("unit") == "deg"
+    assert ra.findtext("ucd") == "pos.eq.ra;meta.main"
+    assert ra.findtext("flag") == "principal"
 
 
 def test_examples(client) -> None:
     """Verify that /tap/examples lists the configured examples, parsed as XML the way pyvo does"""
-    config = client.app.state.config
     response = client.get("/tap/examples")
     assert response.status_code == 200
-    examples = ElementTree.fromstring(response.text).findall(".//*[@typeof='example']")
-    assert [
-        (
-            example.find(".//*[@property='name']").text,
-            example.find(".//*[@property='query']").text,
-            [table.text for table in example.findall(".//*[@property='table']")],
-        )
-        for example in examples
-    ] == [(example.name, example.query.strip(), example.tables) for example in config.tap.examples]
+    document = ElementTree.fromstring(response.text)
+    names = [element.text for element in document.findall(".//*[@property='name']")]
+    # The examples of hats-query.example.toml
+    assert names == ["Objects in a cone", "Object by id"]

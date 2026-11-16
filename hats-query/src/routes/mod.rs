@@ -1,3 +1,5 @@
+//! HTTP endpoints, a module per service.
+
 mod doc;
 mod router;
 mod tap;

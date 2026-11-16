@@ -8,6 +8,7 @@ repository.workspace = true
 
 [dependencies]
 anyhow = "1"
+askama = { version = "0.16", default-features = false, features = ["derive", "std"] }
 axum ={ version = "0.8", default-features = false, features = ["http1", "macros", "tokio", "tracing"] }
 chrono = { workspace = true, features = ["now"] }
 clap = { version = "4", features = ["derive", "env"] }

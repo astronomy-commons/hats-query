@@ -1,5 +1,8 @@
 mod logging;
+mod reposnses;
+mod routes;
 
+use crate::routes::app_router;
 use anyhow::Context as _;
 use axum::Router;
 use axum::http::StatusCode;
@@ -60,7 +63,7 @@ async fn main() -> anyhow::Result<()> {
         .await
         .with_context(|| format!("cannot listen on {address}"))?;
     tracing::info!("listening on {address}");
-    axum::serve(listener, app(Router::new(), state))
+    axum::serve(listener, app(app_router().await, state))
         .with_graceful_shutdown(shutdown_signal())
         .await
         .context("server failed")?;

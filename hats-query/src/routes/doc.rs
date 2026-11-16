@@ -1,3 +1,5 @@
+//! Documentation page.
+
 use crate::routes::TAP_PATH;
 use askama::Template;
 use axum::http::StatusCode;

@@ -9,7 +9,7 @@ repository.workspace = true
 [dependencies]
 anyhow = "1"
 axum ={ version = "0.8", default-features = false, features = ["http1", "macros", "tokio", "tracing"] }
-chrono = { version = "0.4", default-features = false, features = ["now"] }
+chrono = { workspace = true, features = ["now"] }
 clap = { version = "4", features = ["derive", "env"] }
 hats-query-core.workspace = true
 tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread", "signal"] }

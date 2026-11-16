@@ -4,6 +4,7 @@ pub mod adql;
 mod arrow_votable;
 mod common;
 pub mod configuration;
+pub mod dali;
 mod engine;
 pub mod hats;
 pub mod store;

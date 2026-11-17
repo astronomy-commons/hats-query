@@ -2,18 +2,26 @@ version: 2
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
+    labels:
+      - "dependabot"
     schedule:
       interval: "monthly"
   - package-ecosystem: "pip"
     directory: "/"
+    labels:
+      - "dependabot"
     schedule:
       interval: "monthly"
   - package-ecosystem: "gitsubmodule"
     directory: "/"
+    labels:
+      - "dependabot"
     schedule:
       interval: "monthly"
   - package-ecosystem: "cargo"
     directory: "/"
+    labels:
+      - "dependabot"
     schedule:
       interval: "monthly"
     groups:

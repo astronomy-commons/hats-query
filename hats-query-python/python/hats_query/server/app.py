@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from fastapi import FastAPI
 from pyvo.dal.tap import IVOA_DATETIME_FORMAT
 
-from hats_query._extension import build_engine
+from hats_query._extension import Engine
 from hats_query.server.config import Config
 from hats_query.server.routes import doc, tap
 
@@ -37,7 +37,10 @@ def create_app(config: Config | None = None) -> FastAPI:
 def _set_state(app: FastAPI, config: Config) -> None:
     """Store the application-wide values the routes read from `app.state`."""
     app.state.config = config
-    app.state.engine = build_engine(config.mounts, config.tap.tables)
+    app.state.engine = Engine(
+        mounts={mount.path: mount.source for mount in config.mounts},
+        tables={table.name: table.path for table in config.tap.tables},
+    )
     app.state.up_since = datetime.now(UTC).strftime(IVOA_DATETIME_FORMAT)
 
 

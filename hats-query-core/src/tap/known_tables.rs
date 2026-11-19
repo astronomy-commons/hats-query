@@ -1,14 +1,12 @@
-use crate::store::storage::Storage;
+use crate::configuration::TapTableConfig;
+use crate::hats::{Hats, HatsTableProvider};
+use crate::store::{Location, Storage};
+use crate::tap::{TAP_SCHEMA, TapSchema};
 use datafusion::catalog::MemorySchemaProvider;
 use datafusion::common::{DataFusionError, Result as DFResult, TableReference};
 use datafusion::datasource::MemTable;
-use datafusion::object_store::path::Path;
 use datafusion::prelude::SessionContext;
 use futures_util::future::try_join_all;
-use hats_query_core::hats::{Hats, HatsTableProvider};
-use hats_query_core::store::Location;
-use hats_query_core::tap::{TAP_SCHEMA, TapSchema};
-use pyo3::FromPyObject;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -26,7 +24,7 @@ impl KnownTables {
             .into_iter()
             .map(|config| {
                 let location = storage
-                    .resolve(&Location::Mounted(Path::from(config.path.as_str())))
+                    .resolve(&Location::Mounted(config.path))
                     .map_err(|e| e.context(format!("Cannot resolve table '{}'", config.name)))?;
                 Ok((config.name, Hats::new(location)))
             })
@@ -89,18 +87,19 @@ fn register_df_schema_if_missing(ctx: &SessionContext, df_schema_name: &str) -> 
     Ok(())
 }
 
-#[derive(FromPyObject)]
-pub(crate) struct TapTableConfig {
-    name: String,
-    path: String,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tests::util::{storage, test_data_location, test_data_path};
+    use crate::adql::AdqlContext;
+    use crate::tests::util::{storage, test_data_path};
     use datafusion::arrow::array::AsArray;
-    use hats_query_core::adql::AdqlContext;
+
+    /// The location of a test data directory, resolved through `storage()`.
+    fn test_data_location(name: &str) -> crate::store::StorePath {
+        storage()
+            .resolve(&Location::Mounted(test_data_path(name)))
+            .unwrap()
+    }
 
     #[tokio::test]
     async fn register_tap_schema_tables() {
@@ -225,10 +224,13 @@ mod tests {
 
     #[test]
     fn from_tap_table_configs() {
-        let configs = vec![TapTableConfig {
-            name: "a.x".to_string(),
-            path: format!("/{}", test_data_path("small_sky")),
-        }];
+        let configs = vec![
+            TapTableConfig::new(
+                "a.x".to_string(),
+                &format!("/{}", test_data_path("small_sky")),
+            )
+            .unwrap(),
+        ];
         let known_tables = KnownTables::from_tap_table_configs(&storage(), configs).unwrap();
         assert_eq!(known_tables.tables.keys().collect::<Vec<_>>(), ["a.x"]);
     }

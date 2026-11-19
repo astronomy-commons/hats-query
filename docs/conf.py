@@ -51,7 +51,6 @@ add_module_names = False
 
 autoapi_type = "python"
 autoapi_dirs = ["../hats-query-python/python"]
-autoapi_ignore = ["*/__main__.py"]
 autoapi_add_toc_tree_entry = False
 autoapi_member_order = "bysource"
 

@@ -1,6 +1,6 @@
 # Integration tests of the hats-query server, a member of the uv workspace in the repository root.
-# This is not a package, uv only installs its dependencies. The server is built and installed independently,
-# for now the tests run the Python server from the hats-query package of ../hats-query-python.
+# This is not a package, uv only installs its dependencies. The tests build and run the Rust server of
+# ../hats-query with cargo.
 # Pytest settings are in the root pyproject.toml.
 
 [project]
@@ -8,7 +8,7 @@ name = "hats-query-tests"
 version = "0.0.0"
 requires-python = ">=3.11"
 dependencies = [
-    "httpx2", # Used by fastapi.testclient.TestClient
+    "httpx2", # HTTP client of the server under test
     "pytest",
     "pytest-asyncio",
     "pytest-cov", # Used to report total code coverage

@@ -20,49 +20,80 @@ This document provides a guide for contributing to the development of this proje
 ## Common Commands
 
 ```bash
-# All tests
-python -m pytest
+# Create .venv with all Python packages and dev dependencies, building the Rust extension in debug mode.
+# `uv run` re-syncs it and rebuilds the extension if its Rust code has changed.
+uv sync --all-packages --all-groups
+# Rebuild the extension showing the full Cargo output
+(cd hats-query-python && uv run maturin develop --uv)
+# Update the locked Python dependencies
+uv lock --upgrade
 
-# Parallel tests
-python -m pytest -n auto
+# Run the server placeholder
+cargo run -p hats-query
+
+# Rust tests, lints and formatting for all workspace crates
+cargo test
+cargo clippy --all-targets -- -D warnings
+cargo fmt
+
+# All Python tests: unit tests of the bindings and integration tests of the server, add `-m ""` to run STILTS tests
+uv run pytest
+# Only some of them
+uv run pytest hats-query-tests
 
 # Lint and format (let the linter fix style — do not hand-tune)
-ruff check src/ tests/
-ruff format src/ tests/
+uv run ruff check hats-query-python/ hats-query-tests/
+uv run ruff format hats-query-python/ hats-query-tests/
 # Pre-commit (runs ruff lint/format, workflow/pyproject schema checks, pytest, etc.)
-pre-commit run --all-files
+uv run pre-commit run --all-files
 
 # Build docs
-sphinx-build -M html ./docs ./_readthedocs
+uv run sphinx-build -M html ./docs ./_readthedocs
 
 # Run the server with autoreload
-python -m hats_query --config hats-query.toml --server.address 127.0.0.1 --server.port 8000 --server.developer_mode true
+uv run python -m hats_query --config hats-query.toml --server.address 127.0.0.1 --server.port 8000 --server.developer_mode true
 ```
 
 ## Repository Structure
 
 ```
-src/hats_query/             Main package
-  __main__.py               `python -m hats_query` entry point
-  server/                   FastAPI app
-    config.py               Configuration, see hats-query.example.toml
-    routes/                 Endpoints, one APIRouter per module
-    templates/              Jinja2 templates
-tests/hats_query/           Test suite
-tests/data/git-submodules/  Git submodules, excluded from pytest collection and ruff
-  hats/                     HATS library (https://github.com/astronomy-commons/hats), see tests/data/ for example catalogs
-  lyonetia/                 IVOA ADQL test queries (https://github.com/ivoa/lyonetia), see src/adql/ivoa/
-docs/                             Sphinx documentation sources
+Cargo.toml                  Cargo workspace: shared version, dependencies and lints
+pyproject.toml              uv workspace of the Python projects, dev dependencies, pytest settings for all Python tests
+uv.lock                     Locked Python dependencies
+hats-query/                 Rust server binary, a placeholder for now
+hats-query-core/            Rust library with the code common to the server and the Python bindings
+hats-query-python/          Python package `hats-query`, built with maturin
+  pyproject.toml
+  Cargo.toml                Rust extension module `hats_query._extension`
+  rust/                     Rust sources of the extension module
+  python/hats_query/        Python sources
+    __main__.py             `python -m hats_query` entry point
+    server/                 FastAPI app
+      config.py             Configuration, see hats-query.example.toml
+      routes/               Endpoints, one APIRouter per module
+      templates/            Jinja2 templates
+  tests/                    Python unit tests
+hats-query-tests/           Integration tests of the server, in Python, assume the server is installed independently
+  pyproject.toml            Test dependencies, not a package
+  tests/
+test-data/                  Test data shared by Rust and Python tests
+  ivoa-schemas/             IVOA XML schemas to validate VOSI responses
+  git-submodules/           Git submodules, excluded from pytest collection and ruff
+    hats/                   HATS library (https://github.com/astronomy-commons/hats), see tests/data/ for example catalogs
+    lyonetia/               IVOA ADQL test queries (https://github.com/ivoa/lyonetia), see src/adql/ivoa/
+hats-query.example.toml     Example config, used by tests
+docs/                       Sphinx documentation sources
 ```
 
 
 ## Testing Conventions
 
-- **File naming:** `tests/hats_query/<SUBDIR>/test_<name>.py`, mirroring the `src/hats_query/` layout.
-- **Fixtures:** defined in `tests/conftest.py`. Use existing fixtures, do not duplicate test data.
-- Default test run: `python -m pytest`
-- **Third-party test data:** git submodules in `tests/data/git-submodules/`, fetch them with `git submodule update --init`.
+- **File naming:** `hats-query-python/tests/<SUBDIR>/test_<name>.py`, mirroring the `python/hats_query/` layout.
+  Server tests over its HTTP interface go to `hats-query-tests/tests/`.
+- **Fixtures:** defined in `tests/conftest.py` of each project. Use existing fixtures, do not duplicate test data.
+- Default test run: `uv run pytest`, which runs both Python test suites with the settings from the root `pyproject.toml`
+- **Third-party test data:** git submodules in `test-data/git-submodules/`, fetch them with `git submodule update --init`.
   Do not modify them; they are excluded from pytest collection and ruff. To bump one, run
-  `git submodule update --remote tests/data/git-submodules/<name>` and commit the new pointer.
+  `git submodule update --remote test-data/git-submodules/<name>` and commit the new pointer.
   - **Example HATS catalogs:** come from `tests/data/` of the `hats` submodule.
   - **ADQL test queries:** come from `src/adql/ivoa/` of the `lyonetia` submodule.

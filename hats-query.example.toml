@@ -17,7 +17,7 @@ level = "info"
 # catalogs from the hats git submodule, fetch it with `git submodule update --init`.
 [[mount]]
 path = "/hats"
-source = "tests/data/git-submodules/hats/tests/data"
+source = "test-data/git-submodules/hats/tests/data"
 
 # HATS catalogs published over TAP
 [[tap.table]]

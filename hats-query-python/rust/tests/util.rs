@@ -6,21 +6,24 @@ use crate::store::store_path::StorePath;
 use datafusion::object_store::path::Path;
 use std::sync::Arc;
 
-const HATS_TEST_DATA: &str = "tests/data/git-submodules/hats/tests/data";
+/// The repository root, which holds the "test-data" directory.
+pub(crate) const WORKSPACE_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
 
-/// The mount of the crate directory at "/".
-fn crate_mount() -> MountConfig {
-    MountConfig::new("/", env!("CARGO_MANIFEST_DIR"))
+const HATS_TEST_DATA: &str = "test-data/git-submodules/hats/tests/data";
+
+/// The mount of the repository root at "/".
+fn workspace_mount() -> MountConfig {
+    MountConfig::new("/", WORKSPACE_ROOT)
 }
 
-/// An engine with the crate directory mounted at "/".
+/// An engine with the repository root mounted at "/".
 pub(crate) fn engine() -> Arc<Engine> {
-    Arc::new(Engine::new(vec![crate_mount()], vec![]).unwrap())
+    Arc::new(Engine::new(vec![workspace_mount()], vec![]).unwrap())
 }
 
-/// A storage with the crate directory mounted at "/".
+/// A storage with the repository root mounted at "/".
 pub(crate) fn storage() -> Storage {
-    Storage::new(MountTree::from_mount_configs(vec![crate_mount()]).unwrap())
+    Storage::new(MountTree::from_mount_configs(vec![workspace_mount()]).unwrap())
 }
 
 pub(crate) fn test_data_path(name: &str) -> Path {

@@ -50,8 +50,8 @@ uv run pre-commit run --all-files
 # Build docs
 uv run sphinx-build -M html ./docs ./_readthedocs
 
-# Run the server with autoreload
-uv run python -m hats_query --config hats-query.toml --server.address 127.0.0.1 --server.port 8000 --server.developer_mode true
+# Run the server
+cargo run --package hats-query -- --config hats-query.toml
 ```
 
 ## Repository Structure
@@ -60,20 +60,15 @@ uv run python -m hats_query --config hats-query.toml --server.address 127.0.0.1 
 Cargo.toml                  Cargo workspace: shared version, dependencies and lints
 pyproject.toml              uv workspace of the Python projects, dev dependencies, pytest settings for all Python tests
 uv.lock                     Locked Python dependencies
-hats-query/                 Rust server binary, a placeholder for now
+hats-query/                 Rust server binary
 hats-query-core/            Rust library with the code common to the server and the Python bindings
 hats-query-python/          Python package `hats-query`, built with maturin
   pyproject.toml
   Cargo.toml                Rust extension module `hats_query._extension`
   rust/                     Rust sources of the extension module
   python/hats_query/        Python sources
-    __main__.py             `python -m hats_query` entry point
-    server/                 FastAPI app
-      config.py             Configuration, see hats-query.example.toml
-      routes/               Endpoints, one APIRouter per module
-      templates/            Jinja2 templates
   tests/                    Python unit tests
-hats-query-tests/           Integration tests of the server, in Python, assume the server is installed independently
+hats-query-tests/           Integration tests of the server, in Python, build and run the Rust server with cargo
   pyproject.toml            Test dependencies, not a package
   tests/
 test-data/                  Test data shared by Rust and Python tests

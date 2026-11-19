@@ -9,6 +9,6 @@ mod renamed;
 mod top;
 
 use common::ADQL_UDF_PREFIX;
-pub(crate) use identifier::delimit_if_needed;
+pub(crate) use identifier::{delimit_if_needed, schema_of};
 pub use parser::AdqlContext;
 pub use register::register_adql;

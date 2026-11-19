@@ -1,7 +1,7 @@
 use crate::common::{SingleCache, parquet_schema_from_bytes};
 use crate::hats::properties::{CollectionProperties, HatsProperties, IndexProperties, Properties};
 use crate::store::StorePath;
-use crate::table_metadata::TableMetadata;
+use crate::tables::TableMetadata;
 use datafusion::arrow::datatypes::{Schema, SchemaRef};
 use datafusion::common::Result as DFResult;
 use datafusion::error::DataFusionError;
@@ -423,7 +423,7 @@ trait CatalogDir: Sized {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::table_metadata::ColumnMetadata;
+    use crate::tables::ColumnMetadata;
     use crate::tests::util::{WORKSPACE_ROOT, test_data_location, test_data_path};
     use datafusion::execution::object_store::ObjectStoreUrl;
     use datafusion::object_store::path::Path;

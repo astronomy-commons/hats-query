@@ -1,6 +1,7 @@
 //! ADQL identifiers.
 
 use super::parser::AdqlDialect;
+use datafusion::common::{DataFusionError, Result as DFResult, TableReference};
 use datafusion::sql::sqlparser::dialect::Dialect;
 use std::borrow::Cow;
 
@@ -292,6 +293,20 @@ pub(crate) fn delimit_if_needed(name: &str) -> Cow<'_, str> {
     }
 }
 
+/// Returns the schema part of a "schema.table" name, keeping its case and unquoting it.
+///
+/// Returns an error if the name has no schema part.
+pub(crate) fn schema_of(table_name: &str) -> DFResult<String> {
+    TableReference::parse_str_normalized(table_name, true)
+        .schema()
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| {
+            DataFusionError::Configuration(format!(
+                "Table name '{table_name}' must be qualified with a schema, e.g. 'schema.table'"
+            ))
+        })
+}
+
 fn is_lowercase_regular_identifier(name: &str) -> bool {
     let mut chars = name.chars();
     chars
@@ -324,6 +339,23 @@ mod tests {
     fn keywords_are_sorted() {
         assert!(SQL_RESERVED_KEYWORDS.is_sorted());
         assert!(ADQL_RESERVED_KEYWORDS.is_sorted());
+    }
+
+    #[test]
+    fn schema_of_unqualified() {
+        assert!(schema_of("unqualified").is_err());
+    }
+
+    #[test]
+    fn schema_of_qualified() {
+        for (table_name, expected) in [
+            ("schema.table", "schema"),
+            ("MySchema.table", "MySchema"),
+            (r#""my schema".table"#, "my schema"),
+            ("catalog.schema.table", "schema"),
+        ] {
+            assert_eq!(schema_of(table_name).unwrap(), expected, "{table_name}");
+        }
     }
 
     #[test]

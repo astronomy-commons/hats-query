@@ -22,10 +22,9 @@ serde = { version = "1", features = ["derive"] }
 tokio = { workspace = true, features = ["sync"] }
 tracing.workspace = true
 url = "2"
-# votable 0.7.0 doesn't build with serde 1.0.229+ because it uses serde private API, and upstream main pins serde.
-# Our fork removes the private API usage and the pin, switch back to a release version once
-# https://github.com/cds-astro/cds-votable-rust/pull/15 is merged and released.
-votable = { git = "https://github.com/lincc-frameworks/cds-votable-rust.git", branch = "rm-serde-pin", default-features = false }
+# Fork with quick-xml 0.42, switch back to a release version once
+# https://github.com/cds-astro/cds-votable-rust/pull/16 is merged and released.
+votable = { git = "https://github.com/lincc-frameworks/cds-votable-rust.git", branch = "update-quick-xml", default-features = false }
 
 [dev-dependencies]
 approx = { version = "0.5", default-features = false }

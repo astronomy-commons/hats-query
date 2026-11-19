@@ -1,7 +1,10 @@
+use crate::adql::delimit_if_needed;
 use crate::arrow_votable::vo_field;
 use datafusion::arrow::datatypes::{FieldRef, Fields, Schema, SchemaRef};
 use datafusion::common::Result as DFResult;
+use std::borrow::Cow;
 use std::sync::Arc;
+use votable::desc::Description;
 use votable::field::Field;
 
 /// Metadata of the table.
@@ -22,6 +25,11 @@ impl TableMetadata {
         Ok(Self { columns })
     }
 
+    /// Columns, in the table order.
+    pub fn columns(&self) -> &[ColumnMetadata] {
+        &self.columns
+    }
+
     /// Arrow schema of the columns.
     pub(crate) fn schema(&self) -> SchemaRef {
         let fields: Fields = self
@@ -34,7 +42,7 @@ impl TableMetadata {
 }
 
 /// Metadata of the table column.
-pub(crate) struct ColumnMetadata {
+pub struct ColumnMetadata {
     /// Arrow field, authoritative for the column type.
     pub(crate) arrow: FieldRef,
     /// VOTable FIELD, with unit, UCD, description, etc.
@@ -58,6 +66,59 @@ impl ColumnMetadata {
             indexed: false,
             principal: false,
         })
+    }
+
+    /// Name as an ADQL identifier, delimited if it isn't a regular one, e.g. "\"_healpix_29\"".
+    pub fn adql_name(&self) -> Cow<'_, str> {
+        delimit_if_needed(&self.vo.name)
+    }
+
+    /// VOTable datatype, e.g. "double".
+    pub fn datatype(&self) -> String {
+        self.vo.datatype.to_string()
+    }
+
+    /// VOTable arraysize, e.g. "*".
+    pub fn arraysize(&self) -> Option<String> {
+        self.vo.arraysize.as_ref().map(ToString::to_string)
+    }
+
+    /// VOTable extended type, e.g. "timestamp".
+    pub fn xtype(&self) -> Option<&str> {
+        self.vo.xtype.as_deref()
+    }
+
+    /// Human-readable summary.
+    pub fn description(&self) -> Option<&str> {
+        self.vo
+            .description
+            .as_ref()
+            .map(Description::get_content_unwrapped)
+    }
+
+    /// Data model reference.
+    pub fn utype(&self) -> Option<&str> {
+        self.vo.utype.as_deref()
+    }
+
+    /// Physical unit, e.g. "deg".
+    pub fn unit(&self) -> Option<&str> {
+        self.vo.unit.as_deref()
+    }
+
+    /// Unified Content Descriptor, e.g. "pos.eq.ra".
+    pub fn ucd(&self) -> Option<&str> {
+        self.vo.ucd.as_deref()
+    }
+
+    /// Whether filtering by the column is efficient.
+    pub fn indexed(&self) -> bool {
+        self.indexed
+    }
+
+    /// Whether the column is among those to show by default.
+    pub fn principal(&self) -> bool {
+        self.principal
     }
 }
 

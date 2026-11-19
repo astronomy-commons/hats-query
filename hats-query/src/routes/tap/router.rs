@@ -1,7 +1,9 @@
 //! Routing of the TAP service.
 
 use crate::AppState;
-use crate::routes::tap::{availability_handler, capabilities_handler, examples_handler};
+use crate::routes::tap::{
+    availability_handler, capabilities_handler, examples_handler, tables_handler,
+};
 use axum::Router;
 use axum::routing::get;
 
@@ -11,4 +13,5 @@ pub(crate) async fn tap_router() -> Router<AppState> {
         .route("/availability", get(availability_handler))
         .route("/capabilities", get(capabilities_handler))
         .route("/examples", get(examples_handler))
+        .route("/tables", get(tables_handler))
 }

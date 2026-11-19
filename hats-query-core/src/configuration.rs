@@ -1,6 +1,7 @@
 //! Server configuration, see hats-query.example.toml.
 
-use crate::tap::schema_of;
+use crate::adql::schema_of;
+use crate::tap::{TAP_SCHEMA, is_tap_schema};
 use config::{Config, ConfigError, File, FileFormat};
 use datafusion::object_store;
 use serde::{Deserialize, Deserializer, de};
@@ -233,9 +234,12 @@ impl TapTableConfig {
         Ok(table)
     }
 
-    /// Require a "schema.table" name.
+    /// Require a "schema.table" name, with a schema other than the reserved TAP_SCHEMA.
     fn validate(&self) -> Result<(), String> {
-        schema_of(&self.name).map_err(|err| err.to_string())?;
+        let schema = schema_of(&self.name).map_err(|err| err.to_string())?;
+        if is_tap_schema(&schema) {
+            return Err(format!("Schema '{schema}' is reserved for {TAP_SCHEMA}"));
+        }
         Ok(())
     }
 }
@@ -396,6 +400,14 @@ mod tests {
     fn unqualified_table_name_rejected() {
         let err = table("t", "/hats/t").unwrap_err().to_string();
         assert!(err.contains("must be qualified with a schema"), "{err}");
+    }
+
+    #[test]
+    fn reserved_schema_rejected() {
+        for name in ["TAP_SCHEMA.x", "tap_schema.x"] {
+            let err = table(name, "/hats/t").unwrap_err().to_string();
+            assert!(err.contains("is reserved for TAP_SCHEMA"), "{err}");
+        }
     }
 
     #[test]

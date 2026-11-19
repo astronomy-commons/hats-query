@@ -1,9 +1,7 @@
-use crate::adql::delimit_if_needed;
-use crate::table_metadata::TableMetadata;
+use crate::tables::{NamedTable, TableMetadata, TableSet, TableSource};
 use datafusion::arrow::array::{ArrayRef, Int32Array, RecordBatch, StringArray};
 use datafusion::arrow::datatypes::{DataType, Field, Schema};
 use datafusion::common::{DataFusionError, Result as DFResult};
-use itertools::Itertools;
 use std::sync::{Arc, LazyLock};
 
 pub const TAP_SCHEMA: &str = "TAP_SCHEMA";
@@ -47,61 +45,49 @@ pub struct TapSchema {
 }
 
 impl TapSchema {
-    /// Builds TAP_SCHEMA from ("schema.table", metadata) pairs of the known tables.
-    /// The TAP_SCHEMA tables are described after the known tables.
-    pub fn new(mut tables: Vec<(&str, Arc<TableMetadata>)>) -> DFResult<Self> {
-        for (name, _metadata) in &tables {
-            if is_tap_schema(name)? {
-                return Err(DataFusionError::Configuration(format!(
-                    "Table name '{name}' uses schema '{TAP_SCHEMA}', which is reserved"
-                )));
-            }
-        }
-        tables.extend(TAP_SCHEMA_TABLES.iter().cloned());
+    /// Builds TAP_SCHEMA describing the `tables`, which should include the TAP_SCHEMA tables.
+    pub fn new(tables: &TableSet) -> DFResult<Self> {
         Ok(Self {
-            schemas: schemas_table(&tables)?,
-            tables: tables_table(&tables)?,
-            columns: columns_table(&tables)?,
+            schemas: schemas_table(tables)?,
+            tables: tables_table(tables)?,
+            columns: columns_table(tables)?,
             keys: keys_table(),
             key_columns: key_columns_table(),
         })
     }
 
-    /// Returns ("TAP_SCHEMA.table", content) pairs to register.
-    pub fn named_batches(&self) -> [(&'static str, &RecordBatch); 5] {
-        [
-            (SCHEMAS, &self.schemas),
-            (TABLES, &self.tables),
-            (COLUMNS, &self.columns),
-            (KEYS, &self.keys),
-            (KEY_COLUMNS, &self.key_columns),
-        ]
+    /// Rows of the TAP_SCHEMA table `name`, e.g. "TAP_SCHEMA.tables".
+    ///
+    /// Returns an error if `name` isn't a TAP_SCHEMA table.
+    pub fn batch(&self, name: &str) -> DFResult<&RecordBatch> {
+        match name {
+            SCHEMAS => Ok(&self.schemas),
+            TABLES => Ok(&self.tables),
+            COLUMNS => Ok(&self.columns),
+            KEYS => Ok(&self.keys),
+            KEY_COLUMNS => Ok(&self.key_columns),
+            _ => Err(DataFusionError::Internal(format!(
+                "'{name}' is not a {TAP_SCHEMA} table"
+            ))),
+        }
     }
 }
 
-/// Returns the schema part of a "schema.table" name.
-pub(crate) fn schema_of(table_name: &str) -> DFResult<&str> {
-    table_name
-        .split_once('.')
-        .map(|(schema, _table)| schema)
-        .ok_or_else(|| {
-            DataFusionError::Configuration(format!(
-                "Table name '{table_name}' must be qualified with a schema, e.g. 'schema.table'"
-            ))
-        })
+/// TAP_SCHEMA tables, with the rows from [TableSource::TapSchema].
+pub(crate) fn tap_schema_tables() -> impl Iterator<Item = NamedTable> {
+    TAP_SCHEMA_TABLES.iter().map(|(name, metadata)| {
+        NamedTable::new((*name).to_owned(), metadata.clone(), TableSource::TapSchema)
+    })
 }
 
-/// Whether a "schema.table" name belongs to TAP_SCHEMA, case-insensitively as SQL identifiers.
-fn is_tap_schema(table_name: &str) -> DFResult<bool> {
-    Ok(schema_of(table_name)?.eq_ignore_ascii_case(TAP_SCHEMA))
+/// Whether the schema is TAP_SCHEMA, case-insensitively as SQL identifiers.
+pub fn is_tap_schema(schema_name: &str) -> bool {
+    schema_name.eq_ignore_ascii_case(TAP_SCHEMA)
 }
 
-/// Builds TAP_SCHEMA.schemas from ("schema.table", metadata) pairs.
-fn schemas_table(tables: &[(&str, Arc<TableMetadata>)]) -> DFResult<RecordBatch> {
-    let schema_name: Vec<_> = tables
-        .iter()
-        .map(|(name, _metadata)| schema_of(name))
-        .process_results(|names| names.unique().collect())?;
+/// Builds TAP_SCHEMA.schemas.
+fn schemas_table(tables: &TableSet) -> DFResult<RecordBatch> {
+    let schema_name: Vec<_> = tables.schemas().map(|(name, _tables)| name).collect();
     let n = schema_name.len();
 
     let columns: Vec<ArrayRef> = vec![
@@ -123,13 +109,16 @@ fn schemas_schema() -> Schema {
     ])
 }
 
-/// Builds TAP_SCHEMA.tables from ("schema.table", metadata) pairs.
-fn tables_table(tables: &[(&str, Arc<TableMetadata>)]) -> DFResult<RecordBatch> {
-    let table_name: Vec<_> = tables.iter().map(|(name, _metadata)| *name).collect();
-    let schema_name = table_name
-        .iter()
-        .map(|name| schema_of(name))
-        .collect::<DFResult<Vec<_>>>()?;
+/// Builds TAP_SCHEMA.tables.
+fn tables_table(tables: &TableSet) -> DFResult<RecordBatch> {
+    let mut schema_name = Vec::new();
+    let mut table_name = Vec::new();
+    for (schema, schema_tables) in tables.schemas() {
+        for table in schema_tables {
+            schema_name.push(schema);
+            table_name.push(table.name());
+        }
+    }
     let n = table_name.len();
 
     let columns: Vec<ArrayRef> = vec![
@@ -155,8 +144,8 @@ fn tables_schema() -> Schema {
     ])
 }
 
-/// Builds TAP_SCHEMA.columns from ("schema.table", metadata) pairs.
-fn columns_table(tables: &[(&str, Arc<TableMetadata>)]) -> DFResult<RecordBatch> {
+/// Builds TAP_SCHEMA.columns.
+fn columns_table(tables: &TableSet) -> DFResult<RecordBatch> {
     let mut table_name = Vec::new();
     let mut column_name = Vec::new();
     let mut datatype = Vec::new();
@@ -170,23 +159,24 @@ fn columns_table(tables: &[(&str, Arc<TableMetadata>)]) -> DFResult<RecordBatch>
     let mut principal = Vec::new();
     let mut std = Vec::new();
     let mut column_index = Vec::new();
-    for (name, metadata) in tables {
-        let is_std = is_tap_schema(name)?;
-        for (index, column) in metadata.columns.iter().enumerate() {
-            let vo = &column.vo;
-            table_name.push(*name);
-            column_name.push(delimit_if_needed(&vo.name).into_owned());
-            datatype.push(vo.datatype.to_string());
-            arraysize.push(vo.arraysize.as_ref().map(ToString::to_string));
-            xtype.push(vo.xtype.clone());
-            description.push(vo.description.as_ref().map(ToString::to_string));
-            utype.push(vo.utype.clone());
-            unit.push(vo.unit.clone());
-            ucd.push(vo.ucd.clone());
-            indexed.push(i32::from(column.indexed));
-            principal.push(i32::from(column.principal));
-            std.push(i32::from(is_std));
-            column_index.push(index as i32);
+    for (schema, schema_tables) in tables.schemas() {
+        let is_std = is_tap_schema(schema);
+        for table in schema_tables {
+            for (index, column) in table.columns().iter().enumerate() {
+                table_name.push(table.name());
+                column_name.push(column.adql_name().into_owned());
+                datatype.push(column.datatype());
+                arraysize.push(column.arraysize());
+                xtype.push(column.xtype());
+                description.push(column.description());
+                utype.push(column.utype());
+                unit.push(column.unit());
+                ucd.push(column.ucd());
+                indexed.push(i32::from(column.indexed()));
+                principal.push(i32::from(column.principal()));
+                std.push(i32::from(is_std));
+                column_index.push(index as i32);
+            }
         }
     }
     let n = table_name.len();
@@ -270,6 +260,13 @@ mod tests {
         Arc::new(TableMetadata::from_schema(&Schema::new(fields)).unwrap())
     }
 
+    fn table_set(tables: &[(&str, Arc<TableMetadata>)]) -> TableSet {
+        TableSet::new(tables.iter().map(|(name, metadata)| {
+            NamedTable::new(name.to_string(), metadata.clone(), TableSource::TapSchema)
+        }))
+        .unwrap()
+    }
+
     fn strings<'b>(batch: &'b RecordBatch, column: &str) -> Vec<Option<&'b str>> {
         batch
             .column_by_name(column)
@@ -291,25 +288,23 @@ mod tests {
     #[test]
     fn schemas() {
         let empty = metadata(vec![]);
-        let batch = schemas_table(&[
+        let batch = schemas_table(&table_set(&[
             ("b.x", empty.clone()),
             ("a.y", empty.clone()),
-            ("b.z", empty.clone()),
-        ])
+            ("b.z", empty),
+        ]))
         .unwrap();
-        assert_eq!(strings(&batch, "schema_name"), [Some("b"), Some("a")]);
+        assert_eq!(strings(&batch, "schema_name"), [Some("a"), Some("b")]);
         assert_eq!(ints(&batch, "schema_index"), [Some(0), Some(1)]);
-        assert!(schemas_table(&[("unqualified", empty)]).is_err());
     }
 
     #[test]
     fn tables() {
         let empty = metadata(vec![]);
-        let batch = tables_table(&[("b.x", empty.clone()), ("a.y", empty.clone())]).unwrap();
-        assert_eq!(strings(&batch, "table_name"), [Some("b.x"), Some("a.y")]);
-        assert_eq!(strings(&batch, "schema_name"), [Some("b"), Some("a")]);
+        let batch = tables_table(&table_set(&[("b.x", empty.clone()), ("a.y", empty)])).unwrap();
+        assert_eq!(strings(&batch, "table_name"), [Some("a.y"), Some("b.x")]);
+        assert_eq!(strings(&batch, "schema_name"), [Some("a"), Some("b")]);
         assert_eq!(ints(&batch, "table_index"), [Some(0), Some(1)]);
-        assert!(tables_table(&[("unqualified", empty)]).is_err());
     }
 
     #[test]
@@ -327,52 +322,54 @@ mod tests {
             Field::new("name", DataType::Utf8, false),
             Field::new("size", DataType::Int32, true),
         ]);
-        let batch = columns_table(&[("a.x", known), ("TAP_SCHEMA.t", standard)]).unwrap();
+        // "TAP_SCHEMA" sorts before "a"
+        let batch =
+            columns_table(&table_set(&[("TAP_SCHEMA.t", standard), ("a.x", known)])).unwrap();
         assert_eq!(
             strings(&batch, "table_name"),
             [
-                Some("a.x"),
-                Some("a.x"),
-                Some("a.x"),
                 Some("TAP_SCHEMA.t"),
-                Some("TAP_SCHEMA.t")
+                Some("TAP_SCHEMA.t"),
+                Some("a.x"),
+                Some("a.x"),
+                Some("a.x")
             ]
         );
         assert_eq!(
             strings(&batch, "column_name"),
             [
+                Some("name"),
+                Some(r#""size""#),
                 Some("ra"),
                 Some("obs_time"),
-                Some(r#""_healpix_29""#),
-                Some("name"),
-                Some(r#""size""#)
+                Some(r#""_healpix_29""#)
             ]
         );
         assert_eq!(
             strings(&batch, "datatype"),
             [
+                Some("char"),
+                Some("int"),
                 Some("double"),
                 Some("char"),
-                Some("long"),
-                Some("char"),
-                Some("int")
+                Some("long")
             ]
         );
         assert_eq!(
             strings(&batch, "arraysize"),
-            [None, Some("*"), None, Some("*"), None]
+            [Some("*"), None, None, Some("*"), None]
         );
         assert_eq!(
             strings(&batch, "xtype"),
-            [None, Some("timestamp"), None, None, None]
+            [None, None, None, Some("timestamp"), None]
         );
         assert_eq!(
             ints(&batch, "std"),
-            [Some(0), Some(0), Some(0), Some(1), Some(1)]
+            [Some(1), Some(1), Some(0), Some(0), Some(0)]
         );
         assert_eq!(
             ints(&batch, "column_index"),
-            [Some(0), Some(1), Some(2), Some(0), Some(1)]
+            [Some(0), Some(1), Some(0), Some(1), Some(2)]
         );
     }
 
@@ -393,7 +390,7 @@ mod tests {
         ra.utype = Some("stc:AstroCoords.Position2D.Value2.C1".to_string());
         ra.description = Some("Right ascension".into());
 
-        let batch = columns_table(&[("a.x", Arc::new(known))]).unwrap();
+        let batch = columns_table(&table_set(&[("a.x", Arc::new(known))])).unwrap();
         assert_eq!(ints(&batch, "indexed"), [Some(1), Some(1), Some(0)]);
         assert_eq!(ints(&batch, "principal"), [Some(0), Some(0), Some(1)]);
         assert_eq!(strings(&batch, "unit"), [None, None, Some("deg")]);
@@ -411,20 +408,29 @@ mod tests {
     #[test]
     fn tap_schema_describes_itself() {
         let known = metadata(vec![Field::new("ra", DataType::Float64, false)]);
-        let tap_schema = TapSchema::new(vec![("a.x", known)]).unwrap();
+        let tables = TableSet::new(
+            std::iter::once(NamedTable::new(
+                "a.x".to_owned(),
+                known,
+                TableSource::TapSchema,
+            ))
+            .chain(tap_schema_tables()),
+        )
+        .unwrap();
+        let tap_schema = TapSchema::new(&tables).unwrap();
         assert_eq!(
             strings(&tap_schema.schemas, "schema_name"),
-            [Some("a"), Some(TAP_SCHEMA)]
+            [Some(TAP_SCHEMA), Some("a")]
         );
         assert_eq!(
             strings(&tap_schema.tables, "table_name"),
             [
-                Some("a.x"),
                 Some(SCHEMAS),
                 Some(TABLES),
                 Some(COLUMNS),
                 Some(KEYS),
                 Some(KEY_COLUMNS),
+                Some("a.x"),
             ]
         );
         let described_columns: usize = TAP_SCHEMA_TABLES
@@ -434,18 +440,8 @@ mod tests {
         assert_eq!(tap_schema.columns.num_rows(), 1 + described_columns);
         // TAP_SCHEMA columns are all principal, the known table column isn't
         let principal = ints(&tap_schema.columns, "principal");
-        assert_eq!(principal[0], Some(0));
-        assert!(principal[1..].iter().all(|p| *p == Some(1)));
-    }
-
-    #[test]
-    fn reserved_schema() {
-        let empty = metadata(vec![]);
-        for name in ["TAP_SCHEMA.x", "tap_schema.x"] {
-            assert!(
-                TapSchema::new(vec![(name, empty.clone())]).is_err(),
-                "{name}"
-            );
-        }
+        let (known_principal, tap_schema_principal) = principal.split_last().unwrap();
+        assert_eq!(*known_principal, Some(0));
+        assert!(tap_schema_principal.iter().all(|p| *p == Some(1)));
     }
 }

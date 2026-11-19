@@ -1,6 +1,7 @@
 use crate::common::{SingleCache, parquet_schema_from_bytes};
 use crate::engine::Engine;
 use crate::hats::properties::{CollectionProperties, HatsProperties, IndexProperties, Properties};
+use crate::store::store_path::StorePath;
 use crate::table_metadata::TableMetadata;
 use datafusion::arrow::datatypes::SchemaRef;
 use datafusion::common::Result as DFResult;
@@ -49,6 +50,36 @@ impl Hats {
 
     pub(crate) async fn metadata(&self, engine: Arc<Engine>) -> DFResult<Arc<TableMetadata>> {
         self.get_inner(engine.clone()).await?.metadata(engine).await
+    }
+
+    #[allow(dead_code)] // Remove when used
+    /// Location of the primary catalog directory.
+    pub(crate) async fn catalog_location(&self, engine: Arc<Engine>) -> DFResult<StorePath> {
+        self.get_inner(engine.clone())
+            .await?
+            .catalog
+            .location(&engine)
+    }
+
+    #[allow(dead_code)] // Remove when used
+    /// Location of the directory of the index catalog for `column`.
+    ///
+    /// Returns `None` if this is a catalog rather than a collection, or if the collection has no
+    /// index catalog for `column`. Fails if the index catalog exists but cannot be loaded.
+    pub(crate) async fn index_location(
+        &self,
+        engine: Arc<Engine>,
+        column: &str,
+    ) -> DFResult<Option<StorePath>> {
+        let inner = self.get_inner(engine.clone()).await?;
+        let Some(collection) = &inner.collection else {
+            return Ok(None);
+        };
+        collection
+            .index_catalog(engine.clone(), column)
+            .await?
+            .map(|index| index.location(&engine))
+            .transpose()
     }
 }
 
@@ -183,6 +214,28 @@ impl HatsCollection {
             .map(String::as_str))
     }
 
+    #[allow(dead_code)] // Remove when used
+    /// The index catalog for `column`, initialized on the first call.
+    ///
+    /// Returns `None` if the collection has no index catalog for `column`.
+    async fn index_catalog(
+        &self,
+        engine: Arc<Engine>,
+        column: &str,
+    ) -> DFResult<Option<&IndexCatalog>> {
+        let inner = self.lazy_inner(engine.clone()).await?;
+        let (Some(cell), Some(index_dir)) = (
+            inner.index_catalogs.get(column),
+            inner.properties.all_indexes.get(column),
+        ) else {
+            return Ok(None);
+        };
+        let index_path = self.path.clone().join(index_dir.as_str());
+        cell.get_or_try_init(async || IndexCatalog::try_from_dir(engine, &index_path).await)
+            .await
+            .map(Some)
+    }
+
     async fn find_catalog(&self, engine: Arc<Engine>) -> DFResult<HatsCatalog> {
         let properties = self.properties(engine.clone()).await?;
         let catalog_path = self
@@ -305,6 +358,11 @@ trait CatalogDir: Sized {
         Ok(Self::new(path.clone(), Some(properties)))
     }
 
+    /// Location of the catalog directory inside its mount.
+    fn location(&self, engine: &Engine) -> DFResult<StorePath> {
+        engine.resolve(self.path())
+    }
+
     async fn properties(&self, engine: Arc<Engine>) -> DFResult<&Self::Properties> {
         self.properties_cell()
             .get_or_try_init(async || Self::Properties::from_dir(engine, self.path()).await)
@@ -337,6 +395,7 @@ mod tests {
     use super::*;
     use crate::table_metadata::ColumnMetadata;
     use crate::tests::util::{engine, test_data_path};
+    use datafusion::prelude::{ParquetReadOptions, SessionContext};
 
     fn field_names(schema: &SchemaRef) -> Vec<&str> {
         schema.fields().iter().map(|f| f.name().as_str()).collect()
@@ -463,6 +522,86 @@ mod tests {
                 .contains("Cannot read HATS catalog schema file"),
             "{err}"
         );
+    }
+
+    /// Number of rows in `file` inside `location`, read by URL through the engine's session.
+    async fn count_rows_by_url(engine: &Arc<Engine>, location: &StorePath, file: &str) -> usize {
+        let url = format!("{}/{file}", location.url());
+        engine
+            .ctx()
+            .await
+            .unwrap()
+            .read_parquet(url, ParquetReadOptions::default())
+            .await
+            .unwrap()
+            .count()
+            .await
+            .unwrap()
+    }
+
+    /// Number of rows in the test data file at `path`, read directly from the local filesystem.
+    async fn count_rows_locally(path: &str) -> usize {
+        let path = format!("{}/{}", env!("CARGO_MANIFEST_DIR"), test_data_path(path));
+        SessionContext::new()
+            .read_parquet(path, ParquetReadOptions::default())
+            .await
+            .unwrap()
+            .count()
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn catalog_location() {
+        let engine = engine();
+        let hats = Hats::from_path(test_data_path("small_sky_o1_collection"));
+        let location = hats.catalog_location(engine.clone()).await.unwrap();
+        assert_eq!(
+            location.path(),
+            &test_data_path("small_sky_o1_collection/small_sky_order1")
+        );
+
+        let file = "dataset/Norder=1/Dir=0/Npix=44.parquet";
+        assert_eq!(
+            count_rows_by_url(&engine, &location, file).await,
+            count_rows_locally(&format!("small_sky_o1_collection/small_sky_order1/{file}")).await
+        );
+    }
+
+    #[tokio::test]
+    async fn index_location() {
+        let engine = engine();
+        let hats = Hats::from_path(test_data_path("small_sky_o1_collection"));
+        let location = hats
+            .index_location(engine.clone(), "id")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            location.path(),
+            &test_data_path("small_sky_o1_collection/small_sky_order1_id_index")
+        );
+
+        let file = "dataset/index/part.0.parquet";
+        assert_eq!(
+            count_rows_by_url(&engine, &location, file).await,
+            count_rows_locally(&format!(
+                "small_sky_o1_collection/small_sky_order1_id_index/{file}"
+            ))
+            .await
+        );
+    }
+
+    #[tokio::test]
+    async fn index_location_unknown_column() {
+        let hats = Hats::from_path(test_data_path("small_sky_o1_collection"));
+        assert!(hats.index_location(engine(), "ra").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn index_location_of_catalog() {
+        let hats = Hats::from_path(test_data_path("small_sky"));
+        assert!(hats.index_location(engine(), "id").await.unwrap().is_none());
     }
 
     #[tokio::test]

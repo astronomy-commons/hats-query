@@ -14,7 +14,7 @@ chrono = { workspace = true, features = ["now"] }
 clap = { version = "4", features = ["derive", "env"] }
 hats-query-core.workspace = true
 tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread", "signal"] }
-tower-http = { version = "0.7", default-features = false, features = ["catch-panic", "trace"] }
+tower-http = { version = "0.7", default-features = false, features = ["catch-panic", "set-header", "trace"] }
 tracing.workspace = true
 tracing-subscriber = { version = "0.3", default-features = false, features = [
     "fmt",

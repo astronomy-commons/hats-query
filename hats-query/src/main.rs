@@ -5,7 +5,7 @@ mod routes;
 use crate::routes::app_router;
 use anyhow::Context as _;
 use axum::Router;
-use axum::http::StatusCode;
+use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse as _, Response};
 use chrono::{DateTime, Utc};
 use clap::Parser;
@@ -17,6 +17,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tower_http::catch_panic::CatchPanicLayer;
+use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tracing::Level;
 
@@ -70,8 +71,8 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Attach `state` to `routes`, and wrap them with the middleware: request logging, and panics
-/// turned into 500 responses.
+/// Attach `state` to `routes`, and wrap them with the middleware: request logging, the default
+/// Server header, and panics turned into 500 responses.
 fn app(routes: Router<AppState>, state: AppState) -> Router {
     let developer_mode = state.config.server.developer_mode;
     routes
@@ -79,6 +80,10 @@ fn app(routes: Router<AppState>, state: AppState) -> Router {
         .layer(CatchPanicLayer::custom(move |panic| {
             panic_response(panic, developer_mode)
         }))
+        .layer(SetResponseHeaderLayer::if_not_present(
+            header::SERVER,
+            HeaderValue::from_static("hats-query"),
+        ))
         // The outermost layer, so it logs the responses of caught panics too. The span holds the
         // method and path, it must be enabled at the level of the response record to show them.
         .layer(

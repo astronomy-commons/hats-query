@@ -1,9 +1,9 @@
-#   python -m hats_query --config hats-query.toml
+#   hats-query --config hats-query.toml
 
 [server]
 address = "0.0.0.0"
 port = 8321
-# Reload on code changes and return tracebacks in error responses
+# Return panic messages in error responses
 developer_mode = false
 # Who runs this deployment
 contact = "ops@example.org"

@@ -4,10 +4,11 @@ pub mod adql;
 mod arrow_votable;
 mod common;
 pub mod configuration;
+pub mod dali;
 mod engine;
 pub mod hats;
 pub mod store;
-pub mod table_metadata;
+pub mod tables;
 pub mod tap;
 #[cfg(test)]
 mod tests;

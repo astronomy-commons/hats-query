@@ -6,7 +6,7 @@ readme = "../README.md"
 authors = [
     { name = "LINCC Frameworks", email = "lincc-frameworks-team@lists.lsst.org" }
 ]
-description = "Server for querying HATS catalogs through VO and HTTP."
+description = "Python bindings of the hats-query engine for querying HATS catalogs."
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -17,18 +17,10 @@ classifiers = [
 dynamic = ["version"]
 requires-python = ">=3.11"
 dependencies = [
-    "fastapi",
-    "jinja2",
     # Minimum version supported by arrow-pyarrow crate
     # https://github.com/apache/arrow-rs/blob/55.0.0/.github/workflows/integration.yml
     "pyarrow >= 15",
-    "pydantic-settings >= 2.3",
-    "pyvo",
-    "uvicorn",
 ]
-
-[project.scripts]
-hats-query = "hats_query.__main__:main"
 
 [project.urls]
 "Source Code" = "https://github.com/astronomy-commons/hats-query"

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<vosi:tableset xmlns:vosi="http://www.ivoa.net/xml/VOSITables/v1.0"
+               xmlns:vs="http://www.ivoa.net/xml/VODataService/v1.1"
+               xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+{%- for (schema, tables) in table_set.schemas() %}
+  {%- let std = hats_query_core::tap::is_tap_schema(schema) %}
+  <schema>
+    <name>{{ schema }}</name>
+    {%- for table in tables %}
+    <table>
+      <name>{{ table.name() }}</name>
+      {%- for column in table.columns() %}
+      <column{% if std %} std="true"{% endif %}>
+        <name>{{ column.adql_name() }}</name>
+        {%- if let Some(description) = column.description() %}
+        <description>{{ description }}</description>
+        {%- endif %}
+        {%- if let Some(unit) = column.unit() %}
+        <unit>{{ unit }}</unit>
+        {%- endif %}
+        {%- if let Some(ucd) = column.ucd() %}
+        <ucd>{{ ucd }}</ucd>
+        {%- endif %}
+        {%- if let Some(utype) = column.utype() %}
+        <utype>{{ utype }}</utype>
+        {%- endif %}
+        <dataType xsi:type="vs:VOTableType"
+          {%- if let Some(arraysize) = column.arraysize() %} arraysize="{{ arraysize }}"{% endif %}
+          {%- if let Some(xtype) = column.xtype() %} extendedType="{{ xtype }}"{% endif %}>{{ column.datatype() }}</dataType>
+        {%- if column.indexed() %}
+        <flag>indexed</flag>
+        {%- endif %}
+        {%- if column.principal() %}
+        <flag>principal</flag>
+        {%- endif %}
+      </column>
+      {%- endfor %}
+    </table>
+    {%- endfor %}
+  </schema>
+{%- endfor %}
+</vosi:tableset>

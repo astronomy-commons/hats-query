@@ -6,7 +6,7 @@ use datafusion::common::{DataFusionError, Result as DFResult};
 use itertools::Itertools;
 use std::sync::{Arc, LazyLock};
 
-pub(super) const TAP_SCHEMA: &str = "TAP_SCHEMA";
+pub const TAP_SCHEMA: &str = "TAP_SCHEMA";
 const SCHEMAS: &str = "TAP_SCHEMA.schemas";
 const TABLES: &str = "TAP_SCHEMA.tables";
 const COLUMNS: &str = "TAP_SCHEMA.columns";
@@ -33,7 +33,7 @@ static TAP_SCHEMA_TABLES: LazyLock<[(&str, Arc<TableMetadata>); 5]> = LazyLock::
 });
 
 /// TAP_SCHEMA tables, as defined in TAP 1.1, Section 4.
-pub(super) struct TapSchema {
+pub struct TapSchema {
     /// "Databases", like "gaia_dr3" in "gaia_dr3.gaia_source"
     schemas: RecordBatch,
     /// Table schemas.
@@ -49,7 +49,7 @@ pub(super) struct TapSchema {
 impl TapSchema {
     /// Builds TAP_SCHEMA from ("schema.table", metadata) pairs of the known tables.
     /// The TAP_SCHEMA tables are described after the known tables.
-    pub(super) fn new(mut tables: Vec<(&str, Arc<TableMetadata>)>) -> DFResult<Self> {
+    pub fn new(mut tables: Vec<(&str, Arc<TableMetadata>)>) -> DFResult<Self> {
         for (name, _metadata) in &tables {
             if is_tap_schema(name)? {
                 return Err(DataFusionError::Configuration(format!(
@@ -68,7 +68,7 @@ impl TapSchema {
     }
 
     /// Returns ("TAP_SCHEMA.table", content) pairs to register.
-    pub(super) fn named_batches(&self) -> [(&'static str, &RecordBatch); 5] {
+    pub fn named_batches(&self) -> [(&'static str, &RecordBatch); 5] {
         [
             (SCHEMAS, &self.schemas),
             (TABLES, &self.tables),

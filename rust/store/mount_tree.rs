@@ -8,11 +8,16 @@ use pyo3::prelude::*;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+/// The virtual file system, assembled from mounted sources.
 pub(crate) struct MountTree {
+    /// The `/` directory.
     root: MountNode,
 }
 
 impl MountTree {
+    /// Builds the virtual file system from mount points.
+    ///
+    /// Returns an error if two mount points share a path or a source is unsupported.
     pub(crate) fn from_mount_configs(mount_configs: Vec<MountConfig>) -> DFResult<Self> {
         let mut root = MountNode {
             mount: None,
@@ -71,17 +76,22 @@ impl MountTree {
     }
 }
 
+/// A directory of the virtual file system.
 struct MountNode {
+    /// The source mounted here, if this directory is a mount point.
     mount: Option<Mount>,
+    /// Subdirectories, by name.
     children: BTreeMap<String, MountNode>,
 }
 
+/// A source mounted into the virtual file system.
 struct Mount {
+    /// Object store serving the source's files.
     store: Arc<OpendalStore>,
 }
 
 impl Mount {
-    /// Builds a store rooted at `source`, an absolute local path.
+    /// Opens the object store for `source`, an absolute local path.
     fn new(source: &str) -> DFResult<Self> {
         if !std::path::Path::new(source).is_absolute() {
             return Err(DataFusionError::Configuration(format!(
@@ -95,14 +105,21 @@ impl Mount {
         })
     }
 
+    /// The store as a type-erased object store.
     fn get_store(&self) -> Arc<dyn ObjectStore> {
         Arc::clone(&self.store) as Arc<dyn ObjectStore>
     }
 }
 
+/// A mount point configuration, attaching a source to the virtual file system.
+///
+/// Mirrors Python's `hats_query.server.config.MountConfig`, extracted from it attribute by
+/// attribute, so the field names must match.
 #[derive(FromPyObject)]
 pub(crate) struct MountConfig {
+    /// Where the source appears in the virtual file system, e.g. "/hats".
     path: String,
+    /// The mounted directory, currently an absolute local path.
     source: String,
 }
 
@@ -179,14 +196,6 @@ mod tests {
         assert_nested_tree(&tree, false);
     }
 
-    /// The store mounted at the node `segments` below the root.
-    fn store_at(tree: &MountTree, segments: &[&str]) -> *const () {
-        let node = segments
-            .iter()
-            .fold(&tree.root, |node, segment| &node.children[*segment]);
-        Arc::as_ptr(&node.mount.as_ref().unwrap().store) as *const ()
-    }
-
     /// Resolves into the deepest mount, keeping every segment below it, see `assert_nested_tree`.
     #[test]
     fn resolve_nested() {
@@ -212,9 +221,12 @@ mod tests {
         ] {
             let (store, resolved) = tree.resolve(path).unwrap();
             assert_eq!(resolved.as_ref(), rest, "{path}");
-            assert_eq!(
-                Arc::as_ptr(&store) as *const (),
-                store_at(&tree, mount_segments),
+            let node = mount_segments
+                .iter()
+                .fold(&tree.root, |node, segment| &node.children[*segment]);
+            let mounted = &node.mount.as_ref().unwrap().store;
+            assert!(
+                std::ptr::addr_eq(Arc::as_ptr(&store), Arc::as_ptr(mounted)),
                 "{path}"
             );
         }

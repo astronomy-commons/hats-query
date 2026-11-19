@@ -4,11 +4,16 @@ use datafusion::object_store::ObjectStoreExt;
 use pyo3::prelude::*;
 use pyo3_async_runtimes::tokio::future_into_py;
 
+/// A query engine reading from the virtual file system.
 #[pyclass]
 pub(crate) struct Engine {
+    /// The virtual file system.
     mounts: MountTree,
 }
 
+/// Builds an engine over the mount points.
+///
+/// Returns an error if two mount points share a path or a source is unsupported.
 #[pyfunction]
 pub(crate) fn build_engine(mount_configs: Vec<MountConfig>) -> PyResult<Engine> {
     let mounts =
@@ -18,6 +23,7 @@ pub(crate) fn build_engine(mount_configs: Vec<MountConfig>) -> PyResult<Engine> 
 
 #[pymethods]
 impl Engine {
+    /// Reads the whole file at a virtual `path`, awaitable.
     fn read_bytes<'py>(&self, py: Python<'py>, path: &str) -> PyResult<Bound<'py, PyAny>> {
         let (store, path) = self
             .mounts

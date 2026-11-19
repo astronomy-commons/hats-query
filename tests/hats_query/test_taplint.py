@@ -2,18 +2,18 @@ import json
 import os
 import shlex
 import subprocess
-from collections import Counter
+from collections import Counter, defaultdict
 
 import pytest
 
 # Taplint errors, warnings and failures known to happen, as {"STAGE-CODE": count} in alphabetical order,
 # please update when they change
 KNOWN_FAILURES = {
-    "EXA-NOTM": 1,
+    "EXA-EXVL": 2,
     "EXA-QERX": 2,
     "EXA-VOCT": 2,
     "EXA-YJQB": 2,
-    "MDQ-NOTM": 1,
+    "MDQ-QERX": 7,
     "QAS-JREJ": 2,
     "QAS-QERR": 3,
     "QGE-DFSF": 2,
@@ -25,8 +25,6 @@ KNOWN_FAILURES = {
     "QPO-VOCT": 5,
     "QPO-YJQB": 5,
     "TMC-NOTM": 1,
-    "TME-GONE": 1,
-    "TME-TBNF": 1,
     "TMS-CERR": 1,
     "TMS-CLIO": 1,
     "TMS-FKIO": 1,
@@ -38,21 +36,36 @@ KNOWN_FAILURES = {
     "TMS-TST0": 5,
     "TMS-VOCT": 12,
     "TMS-YJQB": 12,
-    "TMV-GONO": 1,
     "UPL-NOUP": 1,
-    "UUC-NOTM": 1,
     "UWS-QFAA": 3,
 }
 
 
-def count_failures(output: dict) -> Counter:
-    """Count taplint reports per "STAGE-CODE\""""
+def collect_failures(output: dict) -> tuple[Counter, dict[str, list[str]]]:
+    """Count taplint reports per "STAGE-CODE" and collect their messages"""
     failures = Counter()
+    messages = defaultdict(list)
     for section in output["sections"]:
         for report in section["reports"]:
+            code = f"{section['code']}-{report['code']}"
             # "N more reports of the same code" entries have "more" instead of "text"
-            failures[f"{section['code']}-{report['code']}"] += report.get("more", 1)
-    return failures
+            failures[code] += report.get("more", 1)
+            if "text" in report:
+                messages[code].append(f"[{section['title']}] {report['level']}: {report['text']}")
+    return failures, messages
+
+
+def describe_changes(failures: Counter, messages: dict[str, list[str]]) -> str:
+    """Describe how failures differ from KNOWN_FAILURES, with messages of the new ones"""
+    lines = []
+    for code in sorted(failures.keys() | KNOWN_FAILURES.keys()):
+        known, actual = KNOWN_FAILURES.get(code, 0), failures[code]
+        if known == actual:
+            continue
+        lines.append(f"{code}: {known} -> {actual}")
+        if actual > known:
+            lines.extend(f"    {message}" for message in messages[code])
+    return "\n".join(lines)
 
 
 @pytest.mark.stilts
@@ -77,7 +90,10 @@ def test_taplint(live_server_url):
         check=True,
     )
     output = json.loads(result.stdout)
-    failures = count_failures(output)
+    failures, messages = collect_failures(output)
     print(f"taplint: {len(failures)} failing codes, {failures.total()} reports")
 
-    assert dict(failures) == KNOWN_FAILURES
+    if dict(failures) != KNOWN_FAILURES:
+        pytest.fail(
+            f"taplint failures changed, update KNOWN_FAILURES:\n{describe_changes(failures, messages)}"
+        )

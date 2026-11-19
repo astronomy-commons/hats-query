@@ -1,5 +1,4 @@
 import subprocess
-import sys
 import time
 import urllib.request
 from collections.abc import Iterator
@@ -54,7 +53,9 @@ def vosi_tables_schema() -> xmlschema.XMLSchema:
 @pytest.fixture(scope="session")
 def server_command() -> list[str]:
     """Command running the hats-query server under test, without arguments"""
-    return [sys.executable, "-m", "hats_query"]
+    # Build upfront, so the server's startup timeout doesn't include compilation
+    subprocess.run(["cargo", "build", "--quiet", "--package", "hats-query"], check=True)
+    return ["cargo", "run", "--quiet", "--package", "hats-query", "--"]
 
 
 @pytest.fixture(scope="session")

@@ -75,22 +75,27 @@ impl Default for ServerConfig {
 }
 
 /// The `[log]` section.
-#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct LogConfig {
-    pub level: LogLevel,
+    #[serde(deserialize_with = "tracing_level")]
+    pub level: tracing::Level,
 }
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum LogLevel {
-    Critical,
-    Error,
-    Warning,
-    #[default]
-    Info,
-    Debug,
-    Trace,
+impl Default for LogConfig {
+    fn default() -> Self {
+        Self {
+            level: tracing::Level::INFO,
+        }
+    }
+}
+
+/// Deserialize a tracing level: "error", "warn", "info", "debug" or "trace".
+fn tracing_level<'de, D: Deserializer<'de>>(deserializer: D) -> Result<tracing::Level, D::Error> {
+    let value = String::deserialize(deserializer)?;
+    value
+        .parse()
+        .map_err(|err| de::Error::custom(format!("{value}: {err}")))
 }
 
 /// A `[[mount]]`: the directory `source` served under the url prefix `path`.
@@ -314,7 +319,7 @@ mod tests {
         assert_eq!(config.mounts.len(), 1);
         assert_eq!(config.mounts[0].path.as_ref(), "hats");
         assert_eq!(config.mounts[0].source, MountSource::Local(expected_source));
-        assert_eq!(config.log.level, LogLevel::Info);
+        assert_eq!(config.log.level, tracing::Level::INFO);
         assert_eq!(config.tap.tables.len(), 2);
         assert_eq!(config.tap.examples.len(), 2);
     }

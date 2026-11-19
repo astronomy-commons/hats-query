@@ -1,13 +1,25 @@
 [package]
 name = "hats-query"
-description = "Server for querying HATS catalogs through VO and HTTP"
+description = "Server for querying HATS catalogs and Parquet files"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
 [dependencies]
+anyhow = "1"
+axum ={ version = "0.8", default-features = false, features = ["http1", "macros", "tokio", "tracing"] }
+chrono = { version = "0.4", default-features = false, features = ["now"] }
+clap = { version = "4", features = ["derive", "env"] }
 hats-query-core.workspace = true
+tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread", "signal"] }
+tower-http = { version = "0.7", default-features = false, features = ["catch-panic", "trace"] }
+tracing.workspace = true
+tracing-subscriber = { version = "0.3", default-features = false, features = [
+    "fmt",
+    # datafusion and opendal log with the "log" crate, this forwards their records to tracing
+    "tracing-log",
+] }
 
 [lints]
 workspace = true

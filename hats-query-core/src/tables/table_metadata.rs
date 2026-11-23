@@ -1,5 +1,5 @@
 use crate::adql::delimit_if_needed;
-use crate::arrow_votable::{VoConversionError, vo_field};
+use crate::arrow_votable::{ArrowFieldVoExt as _, VoConversionError};
 use datafusion::arrow::datatypes::{FieldRef, Fields, Schema, SchemaRef};
 use datafusion::common::{DataFusionError, Result as DFResult};
 use std::borrow::Cow;
@@ -64,7 +64,8 @@ impl ColumnMetadata {
                 );
                 None
             }
-            Err(err) => return Err(err.context(format!("Column '{}'", arrow.name()))),
+            // With the column name attached by vo_field
+            Err(err) => return Err(err),
         };
         Ok(Self { arrow, vo })
     }
@@ -84,10 +85,11 @@ impl VoColumnMetadata {
     /// Creates column metadata with the VOTable FIELD mapped from the Arrow field,
     /// neither indexed nor principal.
     ///
-    /// Returns an error for types which can't be represented in VOTable, see [vo_field].
+    /// Returns an error for types which can't be represented in VOTable, see
+    /// [crate::arrow_votable::ArrowFieldVoExt::vo_field].
     fn new(arrow: &FieldRef) -> DFResult<Self> {
         Ok(Self {
-            field: vo_field(arrow)?,
+            field: arrow.vo_field()?,
             indexed: false,
             principal: false,
         })

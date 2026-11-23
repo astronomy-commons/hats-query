@@ -18,6 +18,14 @@ pub(crate) enum VoConversionErrorKind {
     UnsupportedType(DataType),
     /// Decimal type with too many digits for VOTable float types to hold all its values exactly.
     DecimalTooLong(DataType),
+    /// Unsigned 64-bit value above the maximum of VOTable long.
+    LongOverflow(u64),
+    /// Unsigned 64-bit array element above the maximum of VOTable long.
+    ArrayElementLongOverflow(u64),
+    /// Null element of a numeric array, which VOTable has no representation for.
+    NullArrayElement(DataType),
+    /// Formatted date or timestamp outside years 0000-9999 of DALI timestamps.
+    YearOutOfRange(String),
 }
 
 impl From<VoConversionErrorKind> for DataFusionError {
@@ -38,6 +46,23 @@ pub(super) fn with_column(error: DataFusionError, column: &str) -> DataFusionErr
             Err(error) => DataFusionError::External(error).context(context()),
         },
         error => error.context(context()),
+    }
+}
+
+/// Turns a [VoConversionErrorKind::LongOverflow] of array elements into
+/// [VoConversionErrorKind::ArrayElementLongOverflow], keeps other errors as they are.
+pub(super) fn in_array_element(error: DataFusionError) -> DataFusionError {
+    match error {
+        DataFusionError::External(error) => match error.downcast::<VoConversionError>() {
+            Ok(mut error) => {
+                if let VoConversionErrorKind::LongOverflow(value) = error.kind {
+                    error.kind = VoConversionErrorKind::ArrayElementLongOverflow(value);
+                }
+                DataFusionError::External(error)
+            }
+            Err(error) => DataFusionError::External(error),
+        },
+        error => error,
     }
 }
 
@@ -79,6 +104,31 @@ impl fmt::Display for VoConversionError {
                 decimals with up to 15 significant digits and a scale from 0 to 22, or with up \
                 to 6 digits. CAST it to DOUBLE PRECISION to accept rounding, or to VARCHAR to \
                 get the exact values as strings."
+            ),
+            VoConversionErrorKind::LongOverflow(value) => write!(
+                f,
+                "has value {value}, above the maximum of VOTable long, {max}. Replace such \
+                values with NULL, e.g. CASE WHEN {identifier} <= {max} THEN {identifier} END, \
+                exclude such rows, or CAST the column to DOUBLE PRECISION to accept rounding \
+                or to VARCHAR to get the exact values as strings.",
+                max = i64::MAX,
+            ),
+            VoConversionErrorKind::ArrayElementLongOverflow(value) => write!(
+                f,
+                "has an array element {value}, above the maximum of VOTable long, {max}. \
+                Exclude such rows or the column from the query.",
+                max = i64::MAX,
+            ),
+            VoConversionErrorKind::NullArrayElement(element_type) => write!(
+                f,
+                "has an array with a null element, which VOTable can't represent for \
+                {element_type} elements. Exclude such rows or the column from the query."
+            ),
+            VoConversionErrorKind::YearOutOfRange(value) => write!(
+                f,
+                "has value {value} outside years 0000-9999, which DALI timestamps can't \
+                represent. Replace such values with NULL using CASE, exclude such rows, or \
+                CAST the column to VARCHAR to get the values as strings."
             ),
         }
     }
@@ -123,15 +173,44 @@ mod tests {
             22, or with up to 6 digits. CAST it to DOUBLE PRECISION to accept rounding, or to \
             VARCHAR to get the exact values as strings."
         );
+        assert_eq!(
+            message(VoConversionErrorKind::LongOverflow(u64::MAX), "x"),
+            "Column 'x' has value 18446744073709551615, above the maximum of VOTable long, \
+            9223372036854775807. Replace such values with NULL, e.g. CASE WHEN x <= \
+            9223372036854775807 THEN x END, exclude such rows, or CAST the column to DOUBLE \
+            PRECISION to accept rounding or to VARCHAR to get the exact values as strings."
+        );
+        assert_eq!(
+            message(
+                VoConversionErrorKind::ArrayElementLongOverflow(u64::MAX),
+                "a"
+            ),
+            "Column 'a' has an array element 18446744073709551615, above the maximum of VOTable \
+            long, 9223372036854775807. Exclude such rows or the column from the query."
+        );
+        assert_eq!(
+            message(
+                VoConversionErrorKind::NullArrayElement(DataType::Float64),
+                "v"
+            ),
+            "Column 'v' has an array with a null element, which VOTable can't represent for \
+            Float64 elements. Exclude such rows or the column from the query."
+        );
+        assert_eq!(
+            message(
+                VoConversionErrorKind::YearOutOfRange("+10000-01-01".into()),
+                "t"
+            ),
+            "Column 't' has value +10000-01-01 outside years 0000-9999, which DALI timestamps \
+            can't represent. Replace such values with NULL using CASE, exclude such rows, or \
+            CAST the column to VARCHAR to get the values as strings."
+        );
     }
 
     #[test]
     fn column_attached_once() {
         let error = with_column(
-            with_column(
-                VoConversionErrorKind::UnsupportedType(DataType::Null).into(),
-                "inner",
-            ),
+            with_column(VoConversionErrorKind::LongOverflow(1).into(), "inner"),
             "outer",
         );
         assert!(error.to_string().contains("Column 'inner'"), "{error}");

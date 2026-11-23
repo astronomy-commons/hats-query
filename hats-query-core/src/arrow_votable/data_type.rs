@@ -38,9 +38,11 @@ pub(super) trait ArrowDataTypeVoExt {
     /// dates and timestamps are stored as `char[*]`, and xtype "timestamp" tells that these
     /// strings are ISO-8601 timestamps.
     /// Each xtype requires the values to be converted to its serialization before writing,
-    /// and [ArrowDataTypeVoExt::storage_type] to return the type of this serialization.
-    /// To support a new xtype, add the Arrow types having it here, and their storage to
-    /// [ArrowDataTypeVoExt::storage_type].
+    /// see [crate::arrow_votable::array::ArrowArrayVoExt::storage_array], and
+    /// [ArrowDataTypeVoExt::storage_type] to return the type of this serialization.
+    /// To support a new xtype, add the Arrow types having it here, their storage to
+    /// [ArrowDataTypeVoExt::storage_type], and their conversion to
+    /// [crate::arrow_votable::array::ArrowArrayVoExt::storage_array].
     fn xtype(&self) -> Option<&'static str>;
 }
 

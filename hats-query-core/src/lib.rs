@@ -1,7 +1,7 @@
 //! Common code of the hats-query server and its Python bindings.
 
 pub mod adql;
-mod arrow_votable;
+pub mod arrow_votable;
 mod common;
 pub mod configuration;
 pub mod dali;

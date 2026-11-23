@@ -1945,6 +1945,7 @@ dependencies = [
  "config",
  "datafusion",
  "futures-util",
+ "half",
  "itertools 0.15.0",
  "java-properties",
  "moka",

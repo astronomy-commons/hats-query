@@ -39,6 +39,7 @@ def test_tables(client, vosi_tables_schema) -> None:
     assert set(tables) == {
         "small_sky.object",
         "small_sky.source",
+        "small_sky.nested",
         "TAP_SCHEMA.schemas",
         "TAP_SCHEMA.tables",
         "TAP_SCHEMA.columns",
@@ -53,6 +54,11 @@ def test_tables(client, vosi_tables_schema) -> None:
     assert ra.findtext("unit") == "deg"
     assert ra.findtext("ucd") == "pos.eq.ra;meta.main"
     assert ra.findtext("flag") == "principal"
+
+    # No "lc" struct column, which VOTable can't represent
+    nested_columns = [column.findtext("name") for column in tables["small_sky.nested"].iter("column")]
+    assert "id" in nested_columns
+    assert "lc" not in nested_columns
 
 
 def test_examples(client) -> None:

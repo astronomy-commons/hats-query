@@ -16,8 +16,12 @@ static TAP_SCHEMA_TABLES: LazyLock<[(&str, Arc<TableMetadata>); 5]> = LazyLock::
     let metadata = |schema| {
         let mut metadata = TableMetadata::from_schema(&schema)
             .expect("TAP_SCHEMA columns must be representable in VOTable");
-        for column in &mut metadata.columns {
-            column.principal = true;
+        for vo in metadata
+            .columns
+            .iter_mut()
+            .filter_map(|column| column.vo.as_mut())
+        {
+            vo.principal = true;
         }
         Arc::new(metadata)
     };
@@ -162,7 +166,7 @@ fn columns_table(tables: &TableSet) -> DFResult<RecordBatch> {
     for (schema, schema_tables) in tables.schemas() {
         let is_std = is_tap_schema(schema);
         for table in schema_tables {
-            for (index, column) in table.columns().iter().enumerate() {
+            for (index, column) in table.vo_columns().enumerate() {
                 table_name.push(table.name());
                 column_name.push(column.adql_name().into_owned());
                 datatype.push(column.datatype());
@@ -381,10 +385,14 @@ mod tests {
             Field::new("ra", DataType::Float64, false),
         ]))
         .unwrap();
-        known.columns[0].indexed = true;
-        known.columns[1].indexed = true;
-        known.columns[2].principal = true;
-        let ra = &mut known.columns[2].vo;
+        let [healpix, id, ra] = known.columns.as_mut_slice() else {
+            panic!("Expected three columns");
+        };
+        let [healpix, id, ra] = [healpix, id, ra].map(|column| column.vo.as_mut().unwrap());
+        healpix.indexed = true;
+        id.indexed = true;
+        ra.principal = true;
+        let ra = &mut ra.field;
         ra.unit = Some("deg".to_string());
         ra.ucd = Some("pos.eq.ra".to_string());
         ra.utype = Some("stc:AstroCoords.Position2D.Value2.C1".to_string());
@@ -403,6 +411,17 @@ mod tests {
             strings(&batch, "description"),
             [None, None, Some("Right ascension")]
         );
+    }
+
+    #[test]
+    fn columns_without_votable_type() {
+        let item = Field::new("mjd", DataType::Float64, true);
+        let known = metadata(vec![
+            Field::new("id", DataType::Int64, false),
+            Field::new("lc", DataType::Struct(vec![item].into()), true),
+        ]);
+        let batch = columns_table(&table_set(&[("a.x", known)])).unwrap();
+        assert_eq!(strings(&batch, "column_name"), [Some("id")]);
     }
 
     #[test]

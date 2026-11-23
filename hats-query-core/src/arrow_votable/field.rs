@@ -1,3 +1,4 @@
+use crate::arrow_votable::error::VoConversionErrorKind;
 use datafusion::arrow::datatypes::{DataType, Field as ArrowField};
 use datafusion::common::{DataFusionError, Result as DFResult};
 use votable::datatype::Datatype;
@@ -98,14 +99,13 @@ fn fixed_size(n: i32) -> DFResult<ArraySize> {
 }
 
 fn unrepresentable(data_type: &DataType) -> DataFusionError {
-    DataFusionError::NotImplemented(format!(
-        "Arrow type {data_type} can't be represented in VOTable"
-    ))
+    VoConversionErrorKind::UnsupportedType(data_type.clone()).into()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::arrow_votable::error::VoConversionError;
     use datafusion::arrow::datatypes::{FieldRef, Fields, TimeUnit};
     use std::sync::Arc;
 
@@ -226,7 +226,11 @@ mod tests {
             DataType::List(item(DataType::Timestamp(TimeUnit::Second, None))),
         ] {
             let field = ArrowField::new("x", data_type.clone(), true);
-            assert!(vo_field(&field).is_err(), "{data_type}");
+            let error = vo_field(&field).unwrap_err();
+            assert!(
+                matches!(&error, DataFusionError::External(e) if e.is::<VoConversionError>()),
+                "{data_type}: {error}"
+            );
         }
     }
 }

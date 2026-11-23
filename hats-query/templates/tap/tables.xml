@@ -9,7 +9,7 @@
     {%- for table in tables %}
     <table>
       <name>{{ table.name() }}</name>
-      {%- for column in table.columns() %}
+      {%- for column in table.vo_columns() %}
       <column{% if std %} std="true"{% endif %}>
         <name>{{ column.adql_name() }}</name>
         {%- if let Some(description) = column.description() %}

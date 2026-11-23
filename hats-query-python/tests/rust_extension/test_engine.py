@@ -9,6 +9,8 @@ HATS_TEST_DATA = Path(__file__).parents[3] / "test-data" / "git-submodules" / "h
 TABLES = {
     "small_sky.object": "/hats/small_sky_o1_collection",
     "small_sky.source": "/hats/small_sky_source",
+    # With "lc" struct column, which VOTable can't represent
+    "small_sky.nested": "/hats/small_sky_nested",
 }
 
 
@@ -55,6 +57,23 @@ async def test_query_hats_table(engine) -> None:
         for row in batch.to_pylist()
     ]
     assert rows == [{"id": 707, "ra": 308.5, "dec": -69.5}]
+
+
+async def test_query_column_without_votable_type(engine) -> None:
+    """Verify that a column of a type VOTable can't represent is queryable, but not in TAP_SCHEMA"""
+    column_names = [
+        name
+        async for batch in engine.query(
+            "SELECT column_name FROM TAP_SCHEMA.columns WHERE table_name = 'small_sky.nested'"
+        )
+        for name in batch.column("column_name").to_pylist()
+    ]
+    assert "id" in column_names
+    assert "lc" not in column_names
+
+    num_rows = sum([batch.num_rows async for batch in engine.query("SELECT lc FROM small_sky.nested")])
+    # hats_nrows of the catalog
+    assert num_rows == 131
 
 
 @pytest.mark.parametrize(

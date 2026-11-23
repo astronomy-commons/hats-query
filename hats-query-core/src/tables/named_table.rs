@@ -1,6 +1,6 @@
 //! Served tables with their names.
 
-use crate::tables::{ColumnMetadata, TableMetadata, TableSource};
+use crate::tables::{TableMetadata, TableSource, VoColumnMetadata};
 use std::sync::Arc;
 
 /// Served table: its qualified name, column metadata and origin of rows.
@@ -28,9 +28,9 @@ impl NamedTable {
         &self.name
     }
 
-    /// Columns, in the table order.
-    pub fn columns(&self) -> &[ColumnMetadata] {
-        self.metadata.columns()
+    /// VO metadata of the columns VOTable can represent, in the table order.
+    pub fn vo_columns(&self) -> impl Iterator<Item = &VoColumnMetadata> {
+        self.metadata.vo_columns()
     }
 
     /// Origin of the rows.

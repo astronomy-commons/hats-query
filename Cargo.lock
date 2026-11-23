@@ -1954,6 +1954,7 @@ dependencies = [
  "roxmltree",
  "serde",
  "tempfile",
+ "thiserror",
  "tokio",
  "tracing",
  "url",

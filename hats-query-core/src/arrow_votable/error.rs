@@ -4,7 +4,7 @@ use datafusion::common::DataFusionError;
 use std::fmt;
 
 /// Failure to represent an Arrow column in VOTable, telling how to change the query to fix it.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub(crate) struct VoConversionError {
     /// Name of the column, [None] until it is attached with [with_column].
     column: Option<String>,
@@ -133,8 +133,6 @@ impl fmt::Display for VoConversionError {
         }
     }
 }
-
-impl std::error::Error for VoConversionError {}
 
 #[cfg(test)]
 mod tests {

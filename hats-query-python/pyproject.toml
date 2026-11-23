@@ -27,6 +27,9 @@ dependencies = [
 
 [dependency-groups]
 test = [
+    "astropy",
+    "numpy",
+    "pandas", # Required by the astropy parquet reader
     "pytest",
     "pytest-asyncio", # Runs async tests
     "pytest-cov", # Used to report total code coverage

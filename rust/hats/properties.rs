@@ -2,6 +2,7 @@
 
 use crate::engine::Engine;
 use datafusion::common::{DataFusionError, Result as DFResult};
+use datafusion::object_store;
 use datafusion::object_store::path::Path;
 use itertools::Itertools;
 use std::collections::{BTreeMap, HashMap};
@@ -25,20 +26,34 @@ pub(super) trait Properties: Sized {
         Self::from_map(map)
     }
 
+    /// Loads the first existing candidate file, if none exists the root error is object store's
+    /// NotFound, so callers can tell it apart from read and parse errors.
     async fn from_dir(engine: Arc<Engine>, path: &Path) -> DFResult<Self> {
+        let mut not_found = None;
         for file_name in Self::FILE_NAMES {
-            if let Ok(bytes) = engine.read_bytes(&path.clone().join(*file_name)).await {
-                return Self::from_reader(bytes.as_ref());
+            let file_path = path.clone().join(*file_name);
+            match engine.read_bytes(&file_path).await {
+                Ok(bytes) => return Self::from_reader(bytes.as_ref()),
+                Err(DataFusionError::ObjectStore(err))
+                    if matches!(*err, object_store::Error::NotFound { .. }) =>
+                {
+                    not_found = Some(err)
+                }
+                Err(err) => return Err(err.context(format!("Cannot read '{file_path}'"))),
             }
         }
-        Err(DataFusionError::Configuration(format!(
+        let message = format!(
             "Missing {} in path '{}'",
             Self::FILE_NAMES
                 .iter()
                 .map(|f| format!("'{f}'"))
                 .join(" or "),
             path
-        )))
+        );
+        Err(match not_found {
+            Some(err) => DataFusionError::ObjectStore(err).context(message),
+            None => DataFusionError::Configuration(message),
+        })
     }
 }
 
@@ -62,6 +77,8 @@ impl Properties for CollectionProperties {
         let all_indexes = map
             .get("all_indexes")
             .map(|s| space_separated_list_to_map(s))
+            .transpose()
+            .map_err(|e| e.context("Invalid 'all_indexes' in collection.properties"))?
             .unwrap_or_default();
         Ok(Self {
             hats_primary_table_url,
@@ -154,12 +171,13 @@ impl Properties for IndexProperties {
         let hats_primary_table_url =
             map.get("hats_primary_table_url").cloned().ok_or_else(|| {
                 DataFusionError::Configuration(
-                    "Missing 'hats_primary_table_url' in index.properties".to_string(),
+                    "Missing 'hats_primary_table_url' in index catalog's hats.properties"
+                        .to_string(),
                 )
             })?;
         let hats_index_column = map.get("hats_index_column").cloned().ok_or_else(|| {
             DataFusionError::Configuration(
-                "Missing 'hats_index_column' in index.properties".to_string(),
+                "Missing 'hats_index_column' in index catalog's hats.properties".to_string(),
             )
         })?;
         let hats_npix_suffix = map
@@ -175,21 +193,23 @@ impl Properties for IndexProperties {
 }
 
 fn space_separated_list_to_vec(input: &str) -> Vec<String> {
-    input
-        .split_whitespace()
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string())
-        .collect()
+    input.split_whitespace().map(|s| s.to_string()).collect()
 }
 
 /// HATS standard uses a space-separated "key1 value1 key2 value2" list for some fields.
-fn space_separated_list_to_map(input: &str) -> BTreeMap<String, String> {
-    input
-        .split_whitespace()
-        .filter(|s| !s.is_empty())
-        .tuples()
+fn space_separated_list_to_map(input: &str) -> DFResult<BTreeMap<String, String>> {
+    let mut tuples = input.split_whitespace().tuples();
+    let result = tuples
+        .by_ref()
         .map(|(key, value)| (key.to_string(), value.to_string()))
-        .collect()
+        .collect();
+    if tuples.into_buffer().len() == 0 {
+        Ok(result)
+    } else {
+        Err(DataFusionError::Configuration(format!(
+            "Odd number of items in space-separated key-value list '{input}'"
+        )))
+    }
 }
 
 #[cfg(test)]
@@ -248,7 +268,16 @@ mod tests {
     #[tokio::test]
     async fn hats_properties_missing_file() {
         let path = test_data_path("small_sky_o1_collection");
-        let result = HatsProperties::from_dir(engine(), &path).await;
-        assert!(matches!(result, Err(DataFusionError::Configuration(_))));
+        match HatsProperties::from_dir(engine(), &path).await {
+            Ok(_) => panic!("expected an error"),
+            Err(err) => assert!(
+                matches!(
+                    err.find_root(),
+                    DataFusionError::ObjectStore(e)
+                        if matches!(**e, object_store::Error::NotFound { .. })
+                ),
+                "{err}"
+            ),
+        }
     }
 }

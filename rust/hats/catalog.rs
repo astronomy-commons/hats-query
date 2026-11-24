@@ -6,6 +6,7 @@ use crate::hats::properties::{CollectionProperties, HatsProperties, IndexPropert
 use datafusion::arrow::datatypes::SchemaRef;
 use datafusion::common::Result as DFResult;
 use datafusion::error::DataFusionError;
+use datafusion::object_store;
 use datafusion::object_store::path::Path;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -62,27 +63,38 @@ struct HatsInner {
 
 impl HatsInner {
     async fn try_from_discovery_path(engine: Arc<Engine>, discovery_path: &Path) -> DFResult<Self> {
-        let collection = HatsCollection::try_from_dir(engine.clone(), discovery_path)
-            .await
-            .ok();
-        match collection {
-            Some(collection) => {
-                let catalog = collection.find_catalog(engine.clone()).await?;
-                Ok(Self {
-                    catalog,
-                    collection: Some(collection),
-                })
-            }
-            None => match HatsCatalog::try_from_dir(engine.clone(), discovery_path).await {
-                Ok(catalog) => Ok(Self {
-                    catalog,
-                    collection: None,
-                }),
-                Err(err) => Err(DataFusionError::Configuration(format!(
-                    "Path '{}' is neither a HATS collection nor a catalog: {err}",
-                    discovery_path
-                ))),
-            },
+        let collection_err =
+            match HatsCollection::try_from_dir(engine.clone(), discovery_path).await {
+                Ok(collection) => {
+                    let catalog = collection.find_catalog(engine.clone()).await?;
+                    return Ok(Self {
+                        catalog,
+                        collection: Some(collection),
+                    });
+                }
+                Err(err) => err,
+            };
+
+        // Check if the error is due to the collection.properties file not being found,
+        // in which case we try to load it as a catalog instead.
+        let collection_properties_not_found = matches!(
+            collection_err.find_root(),
+            DataFusionError::ObjectStore(e) if matches!(**e, object_store::Error::NotFound { .. })
+        );
+        // Return the underlying error if not a "not found" error
+        if !collection_properties_not_found {
+            return Err(collection_err);
+        }
+
+        match HatsCatalog::try_from_dir(engine.clone(), discovery_path).await {
+            Ok(catalog) => Ok(Self {
+                catalog,
+                collection: None,
+            }),
+            Err(err) => Err(DataFusionError::Configuration(format!(
+                "Path '{}' is neither a HATS collection nor a catalog: {err}",
+                discovery_path
+            ))),
         }
     }
 
@@ -297,6 +309,7 @@ trait CatalogDir: Sized {
 mod tests {
     use super::*;
     use crate::hats::test_utils::{engine, test_data_path};
+    use crate::store::mount_tree::MountConfig;
 
     fn field_names(schema: &SchemaRef) -> Vec<&str> {
         schema.fields().iter().map(|f| f.name().as_str()).collect()
@@ -349,6 +362,23 @@ mod tests {
             panic!("expected an error");
         };
         assert!(matches!(err.as_ref(), DataFusionError::Configuration(_)));
+    }
+
+    #[tokio::test]
+    async fn discover_empty_collection_properties() {
+        let dir = tempfile::tempdir().unwrap();
+        // Create an empty collection.properties file to simulate an invalid file and therefore
+        // invalid collection.
+        std::fs::write(dir.path().join("collection.properties"), "").unwrap();
+        let mount = MountConfig::new("/", dir.path().to_str().unwrap());
+        let engine = Arc::new(Engine::new(vec![mount], vec![]).unwrap());
+        match HatsInner::try_from_discovery_path(engine, &Path::from("")).await {
+            Ok(_) => panic!("expected an error"),
+            Err(err) => assert!(
+                err.to_string().contains("Missing 'hats_primary_table_url'"),
+                "{err}"
+            ),
+        }
     }
 
     #[tokio::test]

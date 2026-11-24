@@ -1715,6 +1715,7 @@ dependencies = [
  "pyo3",
  "pyo3-async-runtimes",
  "roxmltree",
+ "tempfile",
  "tokio",
  "votable",
 ]

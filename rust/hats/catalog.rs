@@ -3,12 +3,13 @@
 use crate::common::{SingleCache, parquet_schema_from_bytes};
 use crate::engine::Engine;
 use crate::hats::properties::{CollectionProperties, HatsProperties, IndexProperties, Properties};
-use datafusion::arrow::datatypes::SchemaRef;
+use datafusion::arrow::datatypes::{Schema, SchemaRef};
 use datafusion::common::Result as DFResult;
 use datafusion::error::DataFusionError;
 use datafusion::object_store;
 use datafusion::object_store::path::Path;
-use std::collections::BTreeMap;
+use itertools::Itertools;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use tokio::sync::OnceCell;
 
@@ -221,6 +222,20 @@ impl CatalogDir for HatsCatalog {
     fn schema_cell(&self) -> &OnceCell<SchemaRef> {
         &self.schema
     }
+
+    async fn properties_columns(
+        &self,
+        engine: Arc<Engine>,
+    ) -> DFResult<impl Iterator<Item = &str>> {
+        let properties = self.properties(engine).await?;
+        Ok([
+            properties.col_ra.as_str(),
+            properties.col_dec.as_str(),
+            properties.col_healpix.as_str(),
+        ]
+        .into_iter()
+        .chain(properties.cols_default.iter().flatten().map(String::as_str)))
+    }
 }
 
 /// Representation of a HATS index catalog.
@@ -255,6 +270,14 @@ impl CatalogDir for IndexCatalog {
     fn schema_cell(&self) -> &OnceCell<SchemaRef> {
         &self.schema
     }
+
+    async fn properties_columns(
+        &self,
+        engine: Arc<Engine>,
+    ) -> DFResult<impl Iterator<Item = &str>> {
+        let properties = self.properties(engine).await?;
+        Ok(std::iter::once(properties.hats_index_column.as_str()))
+    }
 }
 
 /// A HATS catalog directory, one with "hats.properties" file and "dataset/" subdirectory.
@@ -272,6 +295,28 @@ trait CatalogDir: Sized {
     fn properties_cell(&self) -> &OnceCell<Self::Properties>;
 
     fn schema_cell(&self) -> &OnceCell<SchemaRef>;
+
+    /// Column names known from the properties, the schema must have all of them.
+    async fn properties_columns(&self, engine: Arc<Engine>)
+    -> DFResult<impl Iterator<Item = &str>>;
+
+    /// Check that the schema has every column named in the properties.
+    async fn check_schema(&self, engine: Arc<Engine>, schema: &Schema) -> DFResult<()> {
+        let mut missing: BTreeSet<&str> = self.properties_columns(engine).await?.collect();
+        for field in schema.fields() {
+            missing.remove(field.name().as_str());
+        }
+        if missing.is_empty() {
+            return Ok(());
+        }
+        Err(DataFusionError::Configuration(format!(
+            "Columns {} from HATS properties are missing in the schema",
+            missing
+                .iter()
+                .map(|column| format!("'{column}'"))
+                .join(", ")
+        )))
+    }
 
     async fn try_from_dir(engine: Arc<Engine>, path: &Path) -> DFResult<Self> {
         let properties = Self::Properties::from_dir(engine, path).await?;
@@ -294,11 +339,16 @@ trait CatalogDir: Sized {
                     ))
                 })?;
                 // Footer-only file, so an async reader wouldn't save any I/O
-                parquet_schema_from_bytes(bytes).map_err(|e| {
+                let schema = parquet_schema_from_bytes(bytes).map_err(|e| {
                     e.context(format!(
                         "HATS catalog schema file '{schema_path}' is not a valid parquet file"
                     ))
-                })
+                })?;
+
+                self.check_schema(engine, &schema).await.map_err(|e| {
+                    e.context(format!("Invalid HATS catalog schema file '{schema_path}'"))
+                })?;
+                Ok(schema)
             })
             .await
             .cloned()
@@ -313,6 +363,23 @@ mod tests {
 
     fn field_names(schema: &SchemaRef) -> Vec<&str> {
         schema.fields().iter().map(|f| f.name().as_str()).collect()
+    }
+
+    /// A temporary catalog directory mounted at "/", with the given "hats.properties" contents
+    /// and the schema file copied from the `schema_from` test catalog.
+    fn temp_catalog(properties: &str, schema_from: &str) -> (tempfile::TempDir, Arc<Engine>) {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("hats.properties"), properties).unwrap();
+        let dataset_dir = dir.path().join(DATASET_DIR);
+        std::fs::create_dir(&dataset_dir).unwrap();
+        let schema_file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join(test_data_path(schema_from).as_ref())
+            .join(DATASET_DIR)
+            .join(SCHEMA_FILE);
+        std::fs::copy(schema_file, dataset_dir.join(SCHEMA_FILE)).unwrap();
+        let mount = MountConfig::new("/", dir.path().to_str().unwrap());
+        let engine = Arc::new(Engine::new(vec![mount], vec![]).unwrap());
+        (dir, engine)
     }
 
     #[tokio::test]
@@ -414,6 +481,39 @@ mod tests {
         assert!(
             err.to_string()
                 .contains("Cannot read HATS catalog schema file"),
+            "{err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn hats_catalog_schema_missing_columns() {
+        let (_dir, engine) = temp_catalog(
+            "hats_col_ra=ra\n\
+             hats_col_dec=missing_dec\n\
+             hats_cols_default=ra missing_col missing_col\n",
+            "small_sky",
+        );
+        let catalog = HatsCatalog::new(Path::from(""), None);
+        let err = catalog.schema(engine).await.unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("Columns 'missing_col', 'missing_dec' from HATS properties"),
+            "{err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn index_catalog_schema_missing_column() {
+        let (_dir, engine) = temp_catalog(
+            "hats_primary_table_url=x\n\
+             hats_index_column=missing\n",
+            "small_sky_o1_collection/small_sky_order1_id_index",
+        );
+        let catalog = IndexCatalog::new(Path::from(""), None);
+        let err = catalog.schema(engine).await.unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("Columns 'missing' from HATS properties"),
             "{err}"
         );
     }

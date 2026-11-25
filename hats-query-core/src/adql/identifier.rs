@@ -286,7 +286,7 @@ const ADQL_RESERVED_KEYWORDS: &[&str] = &[
 /// quotes, see ADQL 2.1 Sections 2.1.5 and 2.1.6. Regular identifiers are case-insensitive,
 /// and DataFusion folds them to lower case, so names with upper case letters are delimited too.
 pub(crate) fn delimit_if_needed(name: &str) -> Cow<'_, str> {
-    if is_lowercase_regular_identifier(name) && !is_reserved_keyword(name) {
+    if is_regular_identifier(name) && !name.chars().any(|ch| ch.is_ascii_uppercase()) {
         Cow::Borrowed(name)
     } else {
         Cow::Owned(format!("\"{}\"", name.replace('"', "\"\"")))
@@ -307,13 +307,17 @@ pub(crate) fn schema_of(table_name: &str) -> DFResult<String> {
         })
 }
 
-fn is_lowercase_regular_identifier(name: &str) -> bool {
+/// Whether `name` can be written in ADQL queries without double quotes, in any letter case.
+///
+/// See ADQL 2.1 Section 2.1.3: a regular identifier starts with a Latin letter, has only Latin
+/// letters, digits and underscores, and is not a reserved keyword.
+pub(crate) fn is_regular_identifier(name: &str) -> bool {
     let mut chars = name.chars();
     chars
         .next()
         .is_some_and(|ch| AdqlDialect.is_identifier_start(ch))
         && chars.all(|ch| AdqlDialect.is_identifier_part(ch))
-        && !name.chars().any(|ch| ch.is_ascii_uppercase())
+        && !is_reserved_keyword(name)
 }
 
 /// Case-insensitive lookup in the reserved keyword lists.
@@ -398,6 +402,18 @@ mod tests {
             ("in_unit", r#""in_unit""#),
         ] {
             assert_eq!(delimit_if_needed(name), expected, "{name}");
+        }
+    }
+
+    #[test]
+    fn regular_identifiers() {
+        for name in ["ra", "RA", "Mag_2", "x", "coord", "intersects12"] {
+            assert!(is_regular_identifier(name), "{name}");
+        }
+        for name in [
+            "", "_ra", "2mass", "a b", "a-b", "s.t", "ä", "select", "SIZE", "point",
+        ] {
+            assert!(!is_regular_identifier(name), "{name}");
         }
     }
 

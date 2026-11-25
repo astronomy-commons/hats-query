@@ -12,7 +12,7 @@ repository = "https://github.com/astronomy-commons/hats-query"
 # the crates using them.
 [workspace.dependencies]
 # Must match the "arrow" version used by datafusion
-arrow-pyarrow = "59"
+arrow-pyarrow = "60"
 async-trait = "0.1"
 chrono = { version = "0.4", default-features = false }
 datafusion = { version = "55", default-features = false, features = ["compression", "parquet", "sql"] }
@@ -20,9 +20,9 @@ datafusion = { version = "55", default-features = false, features = ["compressio
 futures-util = "0.3"
 hats-query-core = { path = "hats-query-core", version = "0.0.0" }
 # Must use the same "object_store" version as datafusion
-object_store_opendal = { version = "0.58" , default-features = false }
+object_store_opendal = { version = "0.60" , default-features = false }
 # Must match the "opendal" version used by object_store_opendal
-opendal = { version = "0.58", default-features = false, features = ["services-fs"] }
+opendal = { version = "0.59", default-features = false, features = ["services-fs"] }
 # Crate version must match to the version used by arrow-pyarrow. ABI3 version should match the minimum supported Python
 # version and must be kept in sync with CIBW_BUILD in .github/workflows/publish-to-pypi.yml.
 pyo3 = { version = "0.29", features = ["abi3-py311", "bytes"] }

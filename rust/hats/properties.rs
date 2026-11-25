@@ -1,5 +1,3 @@
-#![allow(dead_code)] // TODO: remove this when the code is used
-
 use crate::engine::Engine;
 use datafusion::common::{DataFusionError, Result as DFResult};
 use datafusion::object_store;
@@ -95,12 +93,15 @@ const DEFAULT_COL_HEALPIX_ORDER: u8 = 29;
 const DEFAULT_NPIX_SUFFIX: &str = ".parquet";
 
 pub(super) struct HatsProperties {
+    #[allow(dead_code)] // remove when the code is used
     pub nrows: Option<u64>,
     pub col_ra: String,
     pub col_dec: String,
+    #[allow(dead_code)]
     pub cols_default: Option<Vec<String>>,
     pub col_healpix: String,
     pub col_healpix_order: u8,
+    #[allow(dead_code)] // remove when the code is used
     pub npix_suffix: String,
 }
 
@@ -159,8 +160,11 @@ impl Properties for HatsProperties {
 }
 
 pub(super) struct IndexProperties {
+    #[allow(dead_code)] // remove when the code is used
     pub hats_primary_table_url: String,
+    #[allow(dead_code)] // remove when the code is used
     pub hats_index_column: String,
+    #[allow(dead_code)] // remove when the code is used
     pub hats_npix_suffix: String,
 }
 
@@ -215,7 +219,7 @@ fn space_separated_list_to_map(input: &str) -> DFResult<BTreeMap<String, String>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hats::test_utils::{engine, test_data_path};
+    use crate::tests::util::{engine, test_data_path};
 
     #[tokio::test]
     async fn collection_properties_from_dir() {

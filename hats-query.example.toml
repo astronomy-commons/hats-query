@@ -1,15 +1,15 @@
-#   python -m hats_query --config hats-query.toml
+#   hats-query --config hats-query.toml
 
 [server]
 address = "0.0.0.0"
-port = 80
-# Reload on code changes and return tracebacks in error responses
+port = 8321
+# Return panic messages in error responses
 developer_mode = false
 # Who runs this deployment
 contact = "ops@example.org"
 
 [log]
-# critical, error, warning, info, debug, or trace
+# error, warn, info, debug, or trace
 level = "info"
 
 # Directories this service reads, maps "source" URL to "path" endpoint.
@@ -17,7 +17,7 @@ level = "info"
 # catalogs from the hats git submodule, fetch it with `git submodule update --init`.
 [[mount]]
 path = "/hats"
-source = "tests/data/git-submodules/hats/tests/data"
+source = "test-data/git-submodules/hats/tests/data"
 
 # HATS catalogs published over TAP
 [[tap.table]]

@@ -1,0 +1,37 @@
+[package]
+name = "hats-query-core"
+description = "Common code of the hats-query server and its Python bindings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+bytes = "1"
+chrono = { workspace = true, features = ["alloc"] }
+config = { version = "0.15", default-features = false, features = ["toml"] }
+datafusion.workspace = true
+futures-util.workspace = true
+java-properties = "2"
+itertools = { version = "0.15", default-features = false, features = ["use_std"] }
+moka = { version = "0.12", default-features = false, features = ["future"] }
+object_store_opendal.workspace = true
+opendal.workspace = true
+serde = { version = "1", features = ["derive"] }
+tokio = { workspace = true, features = ["sync"] }
+tracing.workspace = true
+url = "2"
+# votable 0.7.0 doesn't build with serde 1.0.229+ because it uses serde private API, and upstream main pins serde.
+# Our fork removes the private API usage and the pin, switch back to a release version once
+# https://github.com/cds-astro/cds-votable-rust/pull/15 is merged and released.
+votable = { git = "https://github.com/lincc-frameworks/cds-votable-rust.git", branch = "rm-serde-pin", default-features = false }
+
+[dev-dependencies]
+approx = { version = "0.5", default-features = false }
+roxmltree = { version = "0.21", default-features = false }
+tempfile = { version = "3", default-features = false }
+tokio = { workspace = true, features = ["macros"] }
+
+[lints]
+workspace = true

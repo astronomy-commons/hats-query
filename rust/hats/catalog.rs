@@ -228,13 +228,14 @@ impl CatalogDir for HatsCatalog {
         engine: Arc<Engine>,
     ) -> DFResult<impl Iterator<Item = &str>> {
         let properties = self.properties(engine).await?;
+        // "hats_cols_default" is not checked: it may list nested sub-columns as dotted
+        // "column.field" names, which are not top-level schema fields.
         Ok([
             properties.col_ra.as_str(),
             properties.col_dec.as_str(),
             properties.col_healpix.as_str(),
         ]
-        .into_iter()
-        .chain(properties.cols_default.iter().flatten().map(String::as_str)))
+        .into_iter())
     }
 }
 
@@ -488,16 +489,15 @@ mod tests {
     #[tokio::test]
     async fn hats_catalog_schema_missing_columns() {
         let (_dir, engine) = temp_catalog(
-            "hats_col_ra=ra\n\
-             hats_col_dec=missing_dec\n\
-             hats_cols_default=ra missing_col missing_col\n",
+            "hats_col_ra=missing_ra\n\
+             hats_col_dec=missing_dec\n",
             "small_sky",
         );
         let catalog = HatsCatalog::new(Path::from(""), None);
         let err = catalog.schema(engine).await.unwrap_err();
         assert!(
             err.to_string()
-                .contains("Columns 'missing_col', 'missing_dec' from HATS properties"),
+                .contains("Columns 'missing_dec', 'missing_ra' from HATS properties"),
             "{err}"
         );
     }

@@ -29,6 +29,11 @@ path = "/hats/small_sky_o1_collection"
 name = "small_sky.source"
 path = "/hats/small_sky_source"
 
+[[tap.table]]
+name = "small_sky.nested"
+# With "lc" struct column, which VOTable can't represent, served but not listed in TAP_SCHEMA and /tap/tables
+path = "/hats/small_sky_nested"
+
 # Queries offered at /tap/examples, "tables" optionally lists the tables each is about
 [[tap.example]]
 name = "Objects in a cone"

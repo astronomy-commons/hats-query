@@ -1,7 +1,7 @@
 use crate::common::{SingleCache, parquet_schema_from_bytes};
 use crate::hats::properties::{CollectionProperties, HatsProperties, IndexProperties, Properties};
 use crate::store::StorePath;
-use crate::tables::TableMetadata;
+use crate::tables::{ColumnMetadata, TableMetadata};
 use datafusion::arrow::datatypes::{Schema, SchemaRef};
 use datafusion::common::Result as DFResult;
 use datafusion::error::DataFusionError;
@@ -135,21 +135,22 @@ impl HatsInner {
                     None => BTreeSet::new(),
                 };
                 let mut metadata = TableMetadata::from_schema(&schema)?;
-                for column in &mut metadata.columns {
-                    let name = column.arrow.name().as_str();
-                    column.indexed = name == properties.col_healpix || index_columns.contains(name);
+                for ColumnMetadata { arrow, vo } in &mut metadata.columns {
+                    let Some(vo) = vo else { continue };
+                    let name = arrow.name().as_str();
+                    vo.indexed = name == properties.col_healpix || index_columns.contains(name);
                     // "hats_cols_default" is not used: it may list nested sub-columns as dotted
                     // "column.field" names, which are not top-level schema columns.
-                    column.principal = name == properties.col_ra || name == properties.col_dec;
+                    vo.principal = name == properties.col_ra || name == properties.col_dec;
                     if name == properties.col_ra {
-                        column.vo.unit = Some("deg".to_string());
-                        column.vo.ucd = Some("pos.eq.ra;meta.main".to_string());
+                        vo.field.unit = Some("deg".to_string());
+                        vo.field.ucd = Some("pos.eq.ra;meta.main".to_string());
                     } else if name == properties.col_dec {
-                        column.vo.unit = Some("deg".to_string());
-                        column.vo.ucd = Some("pos.eq.dec;meta.main".to_string());
+                        vo.field.unit = Some("deg".to_string());
+                        vo.field.ucd = Some("pos.eq.dec;meta.main".to_string());
                     } else if name == properties.col_healpix {
-                        column.vo.ucd = Some("pos.healpix".to_string());
-                        column.vo.description = Some(
+                        vo.field.ucd = Some("pos.healpix".to_string());
+                        vo.field.description = Some(
                             format!(
                                 "Nested HEALPix index at order {}",
                                 properties.col_healpix_order
@@ -423,7 +424,7 @@ trait CatalogDir: Sized {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tables::ColumnMetadata;
+    use crate::tables::VoColumnMetadata;
     use crate::tests::util::{WORKSPACE_ROOT, test_data_location, test_data_path};
     use datafusion::execution::object_store::ObjectStoreUrl;
     use datafusion::object_store::path::Path;
@@ -458,24 +459,22 @@ mod tests {
         (dir, location)
     }
 
-    /// Names of the columns matching the predicate.
+    /// Names of the TAP columns matching the predicate.
     fn column_names(
         metadata: &TableMetadata,
-        predicate: impl Fn(&ColumnMetadata) -> bool,
+        predicate: impl Fn(&VoColumnMetadata) -> bool,
     ) -> Vec<&str> {
         metadata
-            .columns
-            .iter()
+            .vo_columns()
             .filter(|column| predicate(column))
-            .map(|column| column.arrow.name().as_str())
+            .map(|column| column.field.name.as_str())
             .collect()
     }
 
-    fn column<'a>(metadata: &'a TableMetadata, name: &str) -> &'a ColumnMetadata {
+    fn column<'a>(metadata: &'a TableMetadata, name: &str) -> &'a VoColumnMetadata {
         metadata
-            .columns
-            .iter()
-            .find(|column| column.arrow.name() == name)
+            .vo_columns()
+            .find(|column| column.field.name == name)
             .unwrap()
     }
 
@@ -495,23 +494,23 @@ mod tests {
         // Only the coordinates are principal
         assert_eq!(column_names(&metadata, |c| c.principal), ["ra", "dec"]);
 
-        let ra = &column(&metadata, "ra").vo;
+        let ra = &column(&metadata, "ra").field;
         assert_eq!(
             (ra.unit.as_deref(), ra.ucd.as_deref()),
             (Some("deg"), Some("pos.eq.ra;meta.main"))
         );
-        let dec = &column(&metadata, "dec").vo;
+        let dec = &column(&metadata, "dec").field;
         assert_eq!(
             (dec.unit.as_deref(), dec.ucd.as_deref()),
             (Some("deg"), Some("pos.eq.dec;meta.main"))
         );
-        let healpix = &column(&metadata, "_healpix_29").vo;
+        let healpix = &column(&metadata, "_healpix_29").field;
         assert_eq!(healpix.ucd.as_deref(), Some("pos.healpix"));
         assert_eq!(
             healpix.description.as_ref().map(ToString::to_string),
             Some("Nested HEALPix index at order 29".to_string())
         );
-        let id = &column(&metadata, "id").vo;
+        let id = &column(&metadata, "id").field;
         assert_eq!((id.unit.as_deref(), id.ucd.as_deref()), (None, None));
     }
 

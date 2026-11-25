@@ -19,16 +19,17 @@ moka = { version = "0.12", default-features = false, features = ["future"] }
 object_store_opendal.workspace = true
 opendal.workspace = true
 serde = { version = "1", features = ["derive"] }
+thiserror = { version = "2", default-features = false }
 tokio = { workspace = true, features = ["sync"] }
 tracing.workspace = true
 url = "2"
-# votable 0.7.0 doesn't build with serde 1.0.229+ because it uses serde private API, and upstream main pins serde.
-# Our fork removes the private API usage and the pin, switch back to a release version once
-# https://github.com/cds-astro/cds-votable-rust/pull/15 is merged and released.
-votable = { git = "https://github.com/lincc-frameworks/cds-votable-rust.git", branch = "rm-serde-pin", default-features = false }
+# Fork with quick-xml 0.42, switch back to a release version once
+# https://github.com/cds-astro/cds-votable-rust/pull/16 is merged and released.
+votable = { git = "https://github.com/lincc-frameworks/cds-votable-rust.git", branch = "update-quick-xml", default-features = false }
 
 [dev-dependencies]
 approx = { version = "0.5", default-features = false }
+half = { version = "2", default-features = false }
 roxmltree = { version = "0.21", default-features = false }
 tempfile = { version = "3", default-features = false }
 tokio = { workspace = true, features = ["macros"] }

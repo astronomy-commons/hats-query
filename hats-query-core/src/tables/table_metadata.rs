@@ -1,7 +1,7 @@
 use crate::adql::delimit_if_needed;
-use crate::arrow_votable::vo_field;
+use crate::arrow_votable::{ArrowFieldVoExt as _, VoConversionError};
 use datafusion::arrow::datatypes::{FieldRef, Fields, Schema, SchemaRef};
-use datafusion::common::Result as DFResult;
+use datafusion::common::{DataFusionError, Result as DFResult};
 use std::borrow::Cow;
 use std::sync::Arc;
 use votable::desc::Description;
@@ -25,9 +25,9 @@ impl TableMetadata {
         Ok(Self { columns })
     }
 
-    /// Columns, in the table order.
-    pub fn columns(&self) -> &[ColumnMetadata] {
-        &self.columns
+    /// VO metadata of the columns VOTable can represent, in the table order.
+    pub fn vo_columns(&self) -> impl Iterator<Item = &VoColumnMetadata> {
+        self.columns.iter().filter_map(|column| column.vo.as_ref())
     }
 
     /// Arrow schema of the columns.
@@ -45,24 +45,51 @@ impl TableMetadata {
 pub struct ColumnMetadata {
     /// Arrow field, authoritative for the column type.
     pub(crate) arrow: FieldRef,
-    /// VOTable FIELD, with unit, UCD, description, etc.
-    pub(crate) vo: Field,
-    /// Whether the column is indexed, so it is efficient to filter by,
-    /// as reported in TAP_SCHEMA.columns and VOSI tables.
-    pub(crate) indexed: bool,
-    /// Whether the column is principal, i.e. among the columns to show by default,
-    /// as reported in TAP_SCHEMA.columns and VOSI tables.
-    pub(crate) principal: bool,
+    /// VO metadata, [None] if VOTable can't represent the column type.
+    pub(crate) vo: Option<VoColumnMetadata>,
 }
 
 impl ColumnMetadata {
+    /// Creates column metadata with the VO metadata of the Arrow field, see
+    /// [VoColumnMetadata::new].
+    pub(crate) fn new(arrow: FieldRef) -> DFResult<Self> {
+        let vo = match VoColumnMetadata::new(&arrow) {
+            Ok(vo) => Some(vo),
+            Err(DataFusionError::External(err)) if err.is::<VoConversionError>() => {
+                tracing::warn!(
+                    "Column '{}' of type {} has no VOTable type, it is not listed in TAP_SCHEMA \
+                    and VOSI tables",
+                    arrow.name(),
+                    arrow.data_type()
+                );
+                None
+            }
+            // With the column name attached by vo_field
+            Err(err) => return Err(err),
+        };
+        Ok(Self { arrow, vo })
+    }
+}
+
+/// VO metadata of the table column: its VOTable FIELD and flags.
+pub struct VoColumnMetadata {
+    /// VOTable FIELD, with unit, UCD, description, etc.
+    pub(crate) field: Field,
+    /// Whether the column is indexed, so it is efficient to filter by.
+    pub(crate) indexed: bool,
+    /// Whether the column is principal, i.e. among the columns to show by default.
+    pub(crate) principal: bool,
+}
+
+impl VoColumnMetadata {
     /// Creates column metadata with the VOTable FIELD mapped from the Arrow field,
     /// neither indexed nor principal.
-    pub(crate) fn new(arrow: FieldRef) -> DFResult<Self> {
-        let vo = vo_field(&arrow).map_err(|e| e.context(format!("Column '{}'", arrow.name())))?;
+    ///
+    /// Returns an error for types which can't be represented in VOTable, see
+    /// [crate::arrow_votable::ArrowFieldVoExt::vo_field].
+    fn new(arrow: &FieldRef) -> DFResult<Self> {
         Ok(Self {
-            arrow,
-            vo,
+            field: arrow.vo_field()?,
             indexed: false,
             principal: false,
         })
@@ -70,27 +97,27 @@ impl ColumnMetadata {
 
     /// Name as an ADQL identifier, delimited if it isn't a regular one, e.g. "\"_healpix_29\"".
     pub fn adql_name(&self) -> Cow<'_, str> {
-        delimit_if_needed(&self.vo.name)
+        delimit_if_needed(&self.field.name)
     }
 
     /// VOTable datatype, e.g. "double".
     pub fn datatype(&self) -> String {
-        self.vo.datatype.to_string()
+        self.field.datatype.to_string()
     }
 
     /// VOTable arraysize, e.g. "*".
     pub fn arraysize(&self) -> Option<String> {
-        self.vo.arraysize.as_ref().map(ToString::to_string)
+        self.field.arraysize.as_ref().map(ToString::to_string)
     }
 
     /// VOTable extended type, e.g. "timestamp".
     pub fn xtype(&self) -> Option<&str> {
-        self.vo.xtype.as_deref()
+        self.field.xtype.as_deref()
     }
 
     /// Human-readable summary.
     pub fn description(&self) -> Option<&str> {
-        self.vo
+        self.field
             .description
             .as_ref()
             .map(Description::get_content_unwrapped)
@@ -98,17 +125,17 @@ impl ColumnMetadata {
 
     /// Data model reference.
     pub fn utype(&self) -> Option<&str> {
-        self.vo.utype.as_deref()
+        self.field.utype.as_deref()
     }
 
     /// Physical unit, e.g. "deg".
     pub fn unit(&self) -> Option<&str> {
-        self.vo.unit.as_deref()
+        self.field.unit.as_deref()
     }
 
     /// Unified Content Descriptor, e.g. "pos.eq.ra".
     pub fn ucd(&self) -> Option<&str> {
-        self.vo.ucd.as_deref()
+        self.field.ucd.as_deref()
     }
 
     /// Whether filtering by the column is efficient.
@@ -135,25 +162,29 @@ mod tests {
         ]);
         let metadata = TableMetadata::from_schema(&schema).unwrap();
         let names: Vec<_> = metadata
-            .columns
-            .iter()
-            .map(|column| (column.arrow.name().as_str(), column.vo.name.as_str()))
+            .vo_columns()
+            .map(|column| column.field.name.as_str())
             .collect();
-        assert_eq!(names, [("id", "id"), ("ra", "ra")]);
+        assert_eq!(names, ["id", "ra"]);
         assert!(
             metadata
-                .columns
-                .iter()
+                .vo_columns()
                 .all(|column| !column.indexed && !column.principal)
         );
     }
 
     #[test]
     fn unrepresentable() {
-        let schema = Schema::new(vec![ArrowField::new("nothing", DataType::Null, true)]);
-        match TableMetadata::from_schema(&schema) {
-            Ok(_) => panic!("expected an error"),
-            Err(err) => assert!(err.to_string().contains("Column 'nothing'"), "{err}"),
-        }
+        let schema = Schema::new(vec![
+            ArrowField::new("id", DataType::Int64, false),
+            ArrowField::new("nothing", DataType::Null, true),
+        ]);
+        let metadata = TableMetadata::from_schema(&schema).unwrap();
+        assert_eq!(*metadata.schema(), schema);
+        let listed: Vec<_> = metadata
+            .vo_columns()
+            .map(|column| column.field.name.as_str())
+            .collect();
+        assert_eq!(listed, ["id"]);
     }
 }

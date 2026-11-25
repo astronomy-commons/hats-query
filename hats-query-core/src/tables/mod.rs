@@ -6,6 +6,6 @@ mod table_set;
 mod table_source;
 
 pub use named_table::NamedTable;
-pub use table_metadata::{ColumnMetadata, TableMetadata};
+pub use table_metadata::{ColumnMetadata, TableMetadata, VoColumnMetadata};
 pub use table_set::TableSet;
 pub use table_source::TableSource;

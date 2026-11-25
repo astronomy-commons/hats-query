@@ -12,7 +12,7 @@ KNOWN_FAILURES = {
     "EXA-QERX": 2,
     "EXA-VOCT": 2,
     "EXA-YJQB": 2,
-    "MDQ-QERX": 7,
+    "MDQ-QERX": 8,
     "QAS-JREJ": 2,
     "QAS-QERR": 3,
     "QGE-DFSF": 2,

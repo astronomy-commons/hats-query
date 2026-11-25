@@ -324,7 +324,7 @@ mod tests {
         assert_eq!(config.mounts[0].path.as_ref(), "hats");
         assert_eq!(config.mounts[0].source, MountSource::Local(expected_source));
         assert_eq!(config.log.level, tracing::Level::INFO);
-        assert_eq!(config.tap.tables.len(), 2);
+        assert_eq!(config.tap.tables.len(), 3);
         assert_eq!(config.tap.examples.len(), 2);
     }
 

@@ -97,6 +97,7 @@ pub(super) struct HatsProperties {
     pub nrows: Option<u64>,
     pub col_ra: String,
     pub col_dec: String,
+    #[allow(dead_code)]
     pub cols_default: Option<Vec<String>>,
     pub col_healpix: String,
     pub col_healpix_order: u8,

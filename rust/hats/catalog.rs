@@ -114,18 +114,13 @@ impl HatsInner {
                     Some(collection) => collection.indexes(engine).await?.collect(),
                     None => BTreeSet::new(),
                 };
-                let principal_columns: BTreeSet<&str> = match &properties.cols_default {
-                    Some(columns) => columns.iter().map(String::as_str).collect(),
-                    None => {
-                        BTreeSet::from([properties.col_ra.as_str(), properties.col_dec.as_str()])
-                    }
-                };
-
                 let mut metadata = TableMetadata::from_schema(&schema)?;
                 for column in &mut metadata.columns {
                     let name = column.arrow.name().as_str();
                     column.indexed = name == properties.col_healpix || index_columns.contains(name);
-                    column.principal = principal_columns.contains(name);
+                    // "hats_cols_default" is not used: it may list nested sub-columns as dotted
+                    // "column.field" names, which are not top-level schema columns.
+                    column.principal = name == properties.col_ra || name == properties.col_dec;
                     if name == properties.col_ra {
                         column.vo.unit = Some("deg".to_string());
                         column.vo.ucd = Some("pos.eq.ra;meta.main".to_string());
@@ -458,7 +453,7 @@ mod tests {
             assert!(names.contains(&column), "{column} not in {names:?}");
         }
         assert_eq!(column_names(&metadata, |c| c.indexed), ["_healpix_29"]);
-        // No hats_cols_default in the test catalog, so the coordinates are principal
+        // Only the coordinates are principal
         assert_eq!(column_names(&metadata, |c| c.principal), ["ra", "dec"]);
 
         let ra = &column(&metadata, "ra").vo;
